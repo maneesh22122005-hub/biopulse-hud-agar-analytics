@@ -1,6 +1,6 @@
 # biopulse-hud-agar-analytics
 An automated digital microbiology and computer vision-assisted culture monitoring platform. It implements interactive image thresholding, real-time colony isolation, population morphological analysis, and standard kinetic growth modeling within a responsive high-tech HUD.
-# BioPulse HUD  Automated Agar Analysis Platform v3.0
+# BioPulse - HUD  Automated Agar Analysis Platform v3.0
 
 BioPulse HUD is a high-tech computer vision and data analytics interface designed for rapid, automated colony-forming unit (CFU) counting, artifact identification, and kinetic prediction modeling directly from petri dish photographs. 
 
