@@ -1,0 +1,3289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BioPulse HUD — Colony Identifier & Analytics Platform</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Share+Tech+Mono&display=swap');
+
+  :root {
+    /* ---- v3.0 Extra-Solar Futuristic UI palette ---- */
+    --bg: #030708;
+    --panel: rgba(8, 20, 22, 0.45);
+    --panel-solid: #060e10;
+    --panel-glow: rgba(0, 242, 254, 0.02);
+    --line: rgba(27, 66, 70, 0.4);
+    --line-active: #00f2fe;
+
+    /* Cybernetic Bio-Spectrum Luminescence */
+    --neon-cyan: #00f2fe;
+    --neon-pink: #ff0055;
+    --neon-green: #00ff66;
+    --neon-amber: #ffaa00;
+
+    --text: #e8f5f8;
+    --text-dim: #5c848a;
+    --mono: "Share Tech Mono", "SF Mono", ui-monospace, monospace;
+    --sans: "Orbitron", -apple-system, BlinkMacSystemFont, sans-serif;
+
+    /* Futuristic distortion timing */
+    --hud-glitch-speed: 6s;
+    --scanning-beam-speed: 2.5s;
+  }
+
+  * { box-sizing: border-box; }
+  ::selection { background: var(--neon-cyan); color: #000; }
+  
+  body {
+    margin: 0;
+    background-color: var(--bg);
+    background-image: 
+      radial-gradient(circle at 80% 20%, rgba(255, 0, 127, 0.05) 0%, transparent 50%),
+      radial-gradient(circle at 15% 80%, rgba(0, 242, 254, 0.08) 0%, transparent 60%),
+      linear-gradient(rgba(18, 32, 34, 0.2) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(18, 32, 34, 0.2) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 30px 30px, 30px 30px;
+    color: var(--text);
+    font-family: var(--sans);
+    padding: 24px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .wrap { max-width: 1400px; margin: 0 auto; }
+
+  /* High-Tech HUD Header */
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 2px dashed var(--line);
+    padding-bottom: 16px;
+    margin-bottom: 24px;
+  }
+  .brand-group h1 {
+    margin: 0 0 4px 0;
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    text-transform: uppercase;
+    background: linear-gradient(90deg, #fff 30%, var(--neon-cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .sys-status {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .status-node {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0,0,0,0.3);
+    padding: 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+  }
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--neon-pink);
+    box-shadow: 0 0 8px var(--neon-pink);
+  }
+  .dot.ready { background: var(--neon-green); box-shadow: 0 0 8px var(--neon-green); }
+  .dot.loading { background: var(--neon-amber); box-shadow: 0 0 8px var(--neon-amber); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* Dashboard Grid Layout */
+  .hud-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 24px;
+  }
+  @media (max-width: 1100px) { .hud-grid { grid-template-columns: 1fr; } }
+
+  /* Premium Glassmorphism Cards */
+  .card {
+    background: var(--panel);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+    position: relative;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.4);
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  }
+  .card:hover {
+    border-color: rgba(0, 242, 254, 0.2);
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.5), 0 4px 20px rgba(0,0,0,0.3);
+  }
+  .card-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--neon-cyan);
+    margin: 0 0 16px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .card-label::after {
+    content: "///";
+    color: var(--line);
+    letter-spacing: -2px;
+  }
+
+  /* File Drop System */
+  .dropzone {
+    border: 2px dashed var(--line);
+    background: rgba(7, 13, 14, 0.6);
+    border-radius: 8px;
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .dropzone:hover, .dropzone.dragover {
+    border-color: var(--neon-cyan);
+    background: var(--panel-glow);
+    color: var(--text);
+    box-shadow: 0 0 15px rgba(0, 242, 254, 0.1);
+  }
+  .dropzone svg {
+    fill: var(--text-dim);
+    margin-bottom: 12px;
+    transition: fill 0.2s ease, transform 0.2s ease;
+  }
+  .dropzone:hover svg { fill: var(--neon-cyan); transform: translateY(-2px); }
+  #fileInput { display: none; }
+
+  /* Primary Interactive Workspace */
+  .canvas-workspace {
+    display: grid;
+    grid-template-columns: 1fr 220px;
+    gap: 20px;
+    display: none;
+  }
+  .canvas-workspace.active { display: grid; }
+  @media (max-width: 750px) { .canvas-workspace.active { grid-template-columns: 1fr; } }
+
+  .canvas-viewport {
+    position: relative;
+    background: #000;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  canvas { width: 100%; display: block; }
+  canvas.cleanup-mode { cursor: crosshair; }
+
+  /* Context-Aware Precision Tooling Column */
+  .sidebar-tools {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* Digital Zoom Inspector Window */
+  .inspector-window {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+    height: 160px;
+    position: relative;
+  }
+  #zoomCanvas {
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    display: block;
+  }
+  .inspector-crosshair {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    border: 1px solid rgba(0, 242, 254, 0.15);
+  }
+  .inspector-crosshair::before, .inspector-crosshair::after {
+    content: ""; position: absolute; background: rgba(0, 242, 254, 0.4);
+  }
+  .inspector-crosshair::before { top: 50%; left: 0; width: 100%; height: 1px; }
+  .inspector-crosshair::after { left: 50%; top: 0; width: 1px; height: 100%; }
+  .inspector-overlay-text {
+    position: absolute; bottom: 4px; left: 6px;
+    font-family: var(--mono); font-size: 9px; color: var(--neon-cyan);
+    background: rgba(0,0,0,0.7); padding: 2px 4px; border-radius: 2px;
+  }
+
+  /* Live HUD Metric Displays */
+  .hud-stat-box {
+    background: rgba(7, 13, 14, 0.8);
+    border-left: 3px solid var(--neon-cyan);
+    padding: 12px;
+    border-radius: 0 6px 6px 0;
+  }
+  .hud-stat-box.alt { border-left-color: var(--neon-pink); }
+  .hud-stat-box.green { border-left-color: var(--neon-green); }
+  .hud-stat-box .val { font-family: var(--mono); font-size: 24px; font-weight: 700; color: #fff; line-height: 1.1; }
+  .hud-stat-box .lbl { font-size: 10px; font-family: var(--mono); text-transform: uppercase; color: var(--text-dim); margin-top: 4px; }
+
+  /* Input Controls System */
+  .control-group { margin-bottom: 16px; }
+  .control-label {
+    display: flex; justify-content: space-between;
+    font-size: 12px; color: var(--text-dim); margin-bottom: 6px;
+    font-family: var(--mono);
+  }
+  .control-label .num-val { color: var(--neon-cyan); font-weight: bold; }
+  
+  input[type=range] {
+    -webkit-appearance: none; width: 100%; background: transparent; margin: 6px 0;
+  }
+  input[type=range]:focus { outline: none; }
+  input[type=range]::-webkit-slider-runnable-track {
+    width: 100%; height: 4px; background: var(--line); border-radius: 2px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    height: 14px; width: 14px; border-radius: 50%; background: var(--neon-cyan);
+    cursor: pointer; -webkit-appearance: none; margin-top: -5px;
+    box-shadow: 0 0 8px var(--neon-cyan); transition: transform 0.1s ease;
+  }
+  input[type=range]:active::-webkit-slider-thumb { transform: scale(1.3); }
+
+  /* Custom Toggle Switches */
+  .toggle-container {
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(7, 13, 14, 0.5);
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px 12px; margin-bottom: 10px; font-size: 12.5px;
+    transition: border-color 0.2s ease;
+  }
+  .toggle-container:hover { border-color: rgba(0,242,254,0.15); }
+  .toggle-container span { display: flex; flex-direction: column; gap: 2px; }
+  .toggle-container .sub-lbl { font-size: 10px; color: var(--text-dim); font-family: var(--mono); }
+  
+  .switch-box {
+    position: relative; width: 38px; height: 20px;
+    background: #0b1415; border: 1px solid var(--line); border-radius: 10px;
+    cursor: pointer; flex-shrink: 0; transition: all 0.2s ease;
+  }
+  .switch-box::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--text-dim); transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .switch-box.on { border-color: var(--neon-cyan); background: rgba(0, 242, 254, 0.05); }
+  .switch-box.on::after { transform: translateX(18px); background: var(--neon-cyan); box-shadow: 0 0 6px var(--neon-cyan); }
+  .switch-box.alt.on { border-color: var(--neon-pink); background: rgba(255, 0, 127, 0.05); }
+  .switch-box.alt.on::after { transform: translateX(18px); background: var(--neon-pink); box-shadow: 0 0 6px var(--neon-pink); }
+
+  .disabled-mask { opacity: 0.35; pointer-events: none; transition: opacity 0.2s ease; }
+
+  /* Premium Buttons Architecture */
+  .btn-flex { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .btn {
+    font-family: var(--sans); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+    border: 1px solid var(--line); background: rgba(22, 48, 44, 0.4); color: var(--text);
+    padding: 10px 16px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .btn:hover:not(:disabled) { border-color: var(--neon-cyan); background: rgba(0, 242, 254, 0.05); box-shadow: 0 0 10px rgba(0,242,254,0.1); }
+  .btn:active:not(:disabled) { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.25; cursor: not-allowed; }
+  .btn.primary { background: var(--neon-cyan); color: #050a0b; border-color: var(--neon-cyan); font-weight: 700; }
+  .btn.primary:hover:not(:disabled) { filter: brightness(1.1); box-shadow: 0 0 15px rgba(0,242,254,0.3); }
+  .btn.warn { border-color: var(--neon-pink); background: rgba(255, 0, 127, 0.05); color: var(--neon-pink); }
+  .btn.warn:hover:not(:disabled) { background: var(--neon-pink); color: #000; box-shadow: 0 0 15px rgba(255,0,127,0.2); }
+
+  /* ==========================================================================
+     BIOPULSE HUD v3.0 // EXTRA-SOLAR FUTURISTIC UI STYLING ENGINE (added layer)
+     ========================================================================== */
+
+  body {
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px),
+      radial-gradient(circle at 50% 50%, rgba(0, 242, 254, 0.05), transparent 85%);
+    background-size: 40px 40px, 40px 40px, 100% 100%;
+    letter-spacing: 0.5px;
+  }
+
+  /* Cinematic digital screen overlay (CRT scanlines + chromatic fringe) */
+  body::before {
+    content: " ";
+    display: block;
+    position: fixed;
+    top: 0; left: 0; bottom: 0; right: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.04));
+    z-index: 99999;
+    opacity: 0.6;
+    pointer-events: none;
+    background-size: 100% 3px, 6px 100%;
+  }
+
+  /* Glowing glass panels with corner-bracket highlights */
+  .card {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 242, 254, 0.15) !important;
+    box-shadow: inset 0 0 20px rgba(0, 242, 254, 0.05), 0 10px 30px rgba(0, 0, 0, 0.5);
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .card:hover {
+    border-color: rgba(0, 242, 254, 0.4) !important;
+    box-shadow: inset 0 0 25px rgba(0, 242, 254, 0.1), 0 15px 40px rgba(0, 242, 254, 0.05);
+    transform: translateY(-2px);
+  }
+  .card::before, .card::after {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-color: var(--neon-cyan);
+    border-style: solid;
+    pointer-events: none;
+  }
+  .card::before { top: 0; left: 0; border-width: 2px 0 0 2px; }
+  .card::after { bottom: 0; right: 0; border-width: 0 2px 2px 0; }
+
+  /* Interactive hologram buttons */
+  .btn {
+    text-shadow: 0 0 8px rgba(0, 242, 254, 0.4);
+  }
+  .btn.primary:hover:not(:disabled) {
+    box-shadow: 0 0 25px var(--neon-cyan);
+  }
+
+  /* Kinetic telemetry scanning bar over the plate viewport */
+  .canvas-viewport::after {
+    content: '';
+    position: absolute;
+    top: -10%;
+    left: 0;
+    width: 100%;
+    height: 12px;
+    background: linear-gradient(to bottom, transparent, var(--neon-cyan), transparent);
+    opacity: 0.35;
+    animation: radarScan var(--scanning-beam-speed) infinite linear;
+    pointer-events: none;
+  }
+
+  /* Diagnostic status pulse on the sys-status dot */
+  .dot.ready {
+    animation: diagnosticPulse 2s infinite ease-in-out;
+  }
+
+  /* Brand title micro-glitch */
+  .brand-group h1 {
+    animation: textGlitch var(--hud-glitch-speed) infinite;
+  }
+
+  /* Critical / contamination alert helper class, available for anomaly states */
+  .anomaly-critical {
+    color: var(--neon-pink) !important;
+    animation: systemicErrorFlash 1.5s infinite steps(2);
+    text-shadow: 0 0 10px var(--neon-pink);
+  }
+
+  @keyframes radarScan {
+    0% { top: -10%; }
+    100% { top: 110%; }
+  }
+  @keyframes diagnosticPulse {
+    0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 8px var(--neon-green); }
+    50% { transform: scale(1.2); opacity: 0.5; box-shadow: 0 0 15px var(--neon-green); }
+  }
+  @keyframes systemicErrorFlash {
+    0% { border-color: rgba(255, 0, 85, 0.2); background: rgba(255, 0, 85, 0.02); }
+    100% { border-color: var(--neon-pink); background: rgba(255, 0, 85, 0.15); }
+  }
+  @keyframes textGlitch {
+    0%, 95%, 100% { text-shadow: none; transform: skew(0); }
+    96% { text-shadow: 2px -1px var(--neon-pink), -2px 1px var(--neon-cyan); transform: skew(2deg); }
+    97% { text-shadow: -3px 2px var(--neon-pink), 3px -1px var(--neon-cyan); transform: skew(-3deg); }
+    98% { text-shadow: 1px 1px var(--neon-pink), -1px -2px var(--neon-cyan); transform: skew(1deg); }
+  }
+
+  /* Real-Time Biological Classification Tables */
+  .genus-row {
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(7, 13, 14, 0.4); border: 1px solid var(--line);
+    border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; font-size: 13.5px;
+    position: relative; overflow: hidden;
+  }
+  .genus-bg-progress {
+    position: absolute; top: 0; left: 0; bottom: 0; opacity: 0.06; pointer-events: none;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .genus-meta { display: flex; align-items: center; gap: 10px; position: relative; z-index: 2; }
+  .genus-indicator { width: 8px; height: 8px; border-radius: 50%; }
+  .genus-title { font-weight: 600; }
+  .genus-data { font-family: var(--mono); font-size: 12px; color: var(--text-dim); position: relative; z-index: 2; }
+  .empty-state { text-align: center; color: var(--text-dim); font-size: 13px; padding: 24px; font-style: italic; }
+  .genus-block { margin-bottom: 10px; }
+  .abx-list {
+    margin: 0 0 0 22px; padding: 6px 0 2px 12px;
+    border-left: 2px solid var(--line);
+    font-size: 11.5px; color: var(--text-dim); line-height: 1.6;
+  }
+  .abx-list .abx-title { color: var(--neon-cyan); font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; }
+  .abx-disclaimer {
+    font-size: 11px; color: var(--text-dim); font-style: italic;
+    margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); line-height: 1.5;
+  }
+  .db-lookup-btn {
+    margin: 4px 0 0 22px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--neon-cyan); background: transparent; border: 1px solid var(--line);
+    border-radius: 4px; padding: 3px 8px; cursor: pointer;
+  }
+  .db-lookup-btn:hover { border-color: var(--neon-cyan); }
+  .db-lookup-btn:disabled { color: var(--text-dim); cursor: default; }
+  .db-lookup-panel {
+    margin: 6px 0 0 22px; padding: 8px 0 2px 12px;
+    border-left: 2px solid var(--line);
+    font-size: 11px; color: var(--text-dim); line-height: 1.6;
+  }
+  .db-lookup-panel .db-lookup-title { color: var(--neon-cyan); font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; }
+  .db-lookup-panel .db-lookup-row b { color: var(--text); }
+
+  /* Charts Container Layout */
+  .charts-box {
+    display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 8px;
+  }
+  .chart-canvas-container { position: relative; height: 160px; width: 100%; }
+
+  /* Clean Alert Window overlay */
+  .cleanup-notice {
+    background: rgba(0, 242, 254, 0.04); border: 1px solid rgba(0, 242, 254, 0.2);
+    border-radius: 6px; padding: 12px; font-size: 12px; line-height: 1.5; color: var(--neon-cyan);
+    margin-top: 12px; display: none; animation: fadeIn 0.2s ease;
+  }
+  .cleanup-notice.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Time-Lapse Kinetic Growth Predictor */
+  .sim-badge {
+    font-size: 9px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--neon-amber); border: 1px solid rgba(255,170,0,0.35); background: rgba(255,170,0,0.06);
+    padding: 2px 6px; border-radius: 4px; margin-left: 8px;
+  }
+  select.hud-select {
+    width: 100%; background: rgba(7,13,14,0.8); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 8px 10px; font-family: var(--mono); font-size: 12px; margin-bottom: 4px;
+    appearance: none; -webkit-appearance: none; cursor: pointer;
+  }
+  select.hud-select:focus { outline: none; border-color: var(--neon-cyan); }
+  .hud-row { display: flex; gap: 10px; margin-top: 14px; }
+  .hud-row .hud-stat-box { flex: 1; min-width: 0; }
+  .hud-row .hud-stat-box .val { font-size: 18px; }
+
+  /* ================= Plate Health Radial Gauge ================= */
+  .gauge-card { display: flex; align-items: center; gap: 20px; }
+  .gauge-ring-wrap { position: relative; width: 128px; height: 128px; flex-shrink: 0; filter: drop-shadow(0 0 10px rgba(0,242,254,0.15)); }
+  .gauge-ring-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .gauge-track { fill: none; stroke: rgba(27,50,53,0.6); stroke-width: 9; }
+  .gauge-progress { fill: none; stroke: var(--neon-cyan); stroke-width: 9; stroke-linecap: round; transition: stroke-dashoffset 1.1s cubic-bezier(0.16, 1, 0.3, 1), stroke 0.6s ease; }
+  .gauge-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .gauge-center .gauge-num { font-family: var(--mono); font-size: 26px; font-weight: 800; color: #fff; line-height: 1; }
+  .gauge-center .gauge-unit { font-family: var(--mono); font-size: 9px; color: var(--text-dim); margin-top: 2px; letter-spacing: 0.1em; }
+  .gauge-breakdown { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .gauge-metric { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); }
+  .gauge-metric b { color: var(--text); font-weight: 600; width: 62px; flex-shrink: 0; }
+  .gauge-metric-track { flex: 1; height: 5px; background: rgba(27,50,53,0.6); border-radius: 3px; overflow: hidden; }
+  .gauge-metric-fill { height: 100%; border-radius: 3px; transition: width 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
+  .gauge-metric-val { width: 34px; text-align: right; color: var(--text); flex-shrink: 0; }
+  .gauge-verdict { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 2px; padding: 3px 0; }
+
+  /* ================= Contamination / Artifact stat variants ================= */
+  .hud-stat-box.warn2 { border-left-color: var(--neon-pink); }
+  .hud-stat-box.info2 { border-left-color: #4fd1ff; }
+  .artifact-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+  .legend-chip { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+  .legend-swatch { width: 12px; height: 12px; border-radius: 50%; box-sizing: border-box; }
+  .legend-swatch.colony { border: 2px solid var(--neon-cyan); }
+  .legend-swatch.contaminant { border: 2px dashed var(--neon-pink); }
+  .legend-swatch.bubble { border: 2px dotted #4fd1ff; background: radial-gradient(circle at 35% 30%, rgba(79,209,255,0.5), transparent 60%); }
+
+  /* ================= Growth Playback Timeline ================= */
+  .playback-bar {
+    display: flex; align-items: center; gap: 12px; background: rgba(7,13,14,0.7);
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 14px 0;
+  }
+  .play-btn {
+    width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--neon-cyan);
+    background: rgba(0,242,254,0.08); color: var(--neon-cyan); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    transition: all 0.2s ease; font-size: 13px;
+  }
+  .play-btn:hover { background: var(--neon-cyan); color: #050a0b; box-shadow: 0 0 12px rgba(0,242,254,0.35); }
+  .playback-scrub { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+  .playback-scrub input[type=range] { margin: 0; }
+  .playback-time { font-family: var(--mono); font-size: 10px; color: var(--text-dim); display: flex; justify-content: space-between; }
+  .playback-time span:last-child { color: var(--neon-cyan); }
+  .playback-badge {
+    font-family: var(--mono); font-size: 9px; color: var(--neon-green); border: 1px solid rgba(57,255,20,0.35);
+    background: rgba(57,255,20,0.06); padding: 2px 6px; border-radius: 4px; white-space: nowrap; flex-shrink: 0;
+  }
+
+  /* ================= Radar Sweep scanning indicator ================= */
+  .scan-indicator {
+    position: absolute; top: 10px; right: 10px; font-family: var(--mono); font-size: 10px;
+    color: var(--neon-green); background: rgba(0,0,0,0.55); border: 1px solid rgba(57,255,20,0.3);
+    padding: 3px 8px; border-radius: 4px; display: none; align-items: center; gap: 6px; z-index: 5;
+    letter-spacing: 0.08em;
+  }
+  .scan-indicator.active { display: flex; }
+  .scan-indicator .scan-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--neon-green); box-shadow: 0 0 6px var(--neon-green); animation: pulse 0.6s infinite; }
+
+  /* ================= Charts grid (scatter + histogram) ================= */
+  .charts-box.dual { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 750px) { .charts-box.dual { grid-template-columns: 1fr; } }
+  .chart-mini-title { font-family: var(--mono); font-size: 9.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="brand-group">
+      <h1>BioPulse HUD</h1>
+      <div style="font-size: 12px; color: var(--text-dim); font-family: var(--mono);">AUTOMATED AGAR ANALYSIS PLATFORM v3.0</div>
+    </div>
+    <div class="sys-status">
+      <div class="status-node">
+        <div class="dot loading" id="netDot"></div>
+        <span id="netStatus">INITIALIZING NEURAL ENGINE...</span>
+      </div>
+      <div class="status-node">
+        <div class="dot loading" id="genusDot"></div>
+        <span id="genusStatus">GENUS CLASSIFIER IDLE</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="hud-grid">
+    <div style="display: flex; flex-direction: column;">
+      <div class="card" style="flex: 1;">
+        <div class="card-label">Primary Image Input Buffer</div>
+        
+        <div class="dropzone" id="dropzone">
+          <svg width="40" height="40" viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+          <div>MOUNT PLATE PHOTOGRAPH HERE</div>
+          <div style="font-size:11px; color: var(--text-dim); margin-top: 6px; font-family: var(--mono);">SUPPORTED FORMATS: Standard High-Res PNG / JPG</div>
+        </div>
+        <input type="file" id="fileInput" accept="image/*">
+
+        <div class="canvas-workspace" id="workspace">
+          <div class="canvas-viewport" id="viewport">
+            <canvas id="mainCanvas"></canvas>
+            <div class="scan-indicator" id="scanIndicator"><div class="scan-dot"></div><span>NEURAL SWEEP ACTIVE</span></div>
+          </div>
+          
+          <div class="sidebar-tools">
+            <div class="inspector-window">
+              <canvas id="zoomCanvas"></canvas>
+              <div class="inspector-crosshair"></div>
+              <div class="inspector-overlay-text">REAL-TIME INSPECTOR</div>
+            </div>
+            
+            <div class="hud-stat-box">
+              <div class="val" id="hudCount">0</div>
+              <div class="lbl">TOTAL CFU COUNT</div>
+            </div>
+            <div class="hud-stat-box alt">
+              <div class="val" id="hudDensity">0.0</div>
+              <div class="lbl">AVG RADIAL PX</div>
+            </div>
+            <div class="hud-stat-box green">
+              <div class="val" id="hudShape">0%</div>
+              <div class="lbl">PLATE COHESION</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="btn-flex">
+          <button class="btn" id="remountBtn" style="display:none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            Remount Image
+          </button>
+          <button class="btn primary" id="aiCleanupBtn" style="display:none;" disabled>
+            🧠 AI Cluster Cleanup
+          </button>
+          <button class="btn warn" id="undoCleanupBtn" style="display:none;">
+            Revert Last Filter
+          </button>
+        </div>
+
+        <div class="cleanup-notice" id="cleanupNotice">
+          <strong>CLUSTER SELECTION MODE ACTIVE:</strong> Select a target visual false positive directly inside the viewport frame. The neural engine will isolate its structural signature, compare it across the plate, and scrub out congruent background artifacts.
+        </div>
+
+        <div class="hud-row">
+          <div class="hud-stat-box warn2">
+            <div class="val" id="hudContamPct">0%</div>
+            <div class="lbl">Est. Contamination</div>
+          </div>
+          <div class="hud-stat-box info2">
+            <div class="val" id="hudBubblePct">0%</div>
+            <div class="lbl">Air Bubble Artifacts</div>
+          </div>
+          <div class="hud-stat-box">
+            <div class="val" id="hudCleanPct">100%</div>
+            <div class="lbl">Clean Colony Reads</div>
+          </div>
+        </div>
+
+        <div class="artifact-legend">
+          <div class="legend-chip"><div class="legend-swatch colony"></div>Identified Colony</div>
+          <div class="legend-chip"><div class="legend-swatch contaminant"></div>Suspected Contaminant</div>
+          <div class="legend-chip"><div class="legend-swatch bubble"></div>Air Bubble / Optical Artifact</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Morphological Analysis & Spectrum Density</div>
+        <div class="charts-box dual">
+          <div>
+            <div class="chart-mini-title">Area vs. Cohesion</div>
+            <div class="chart-canvas-container">
+              <canvas id="scatterChart"></canvas>
+            </div>
+          </div>
+          <div>
+            <div class="chart-mini-title">Live Size Distribution</div>
+            <div class="chart-canvas-container">
+              <canvas id="histogramChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Time-Lapse Kinetic Growth Predictor<span class="sim-badge">Simulation Mode</span></div>
+
+        <div class="control-group">
+          <div class="control-label"><span>Growth Model</span></div>
+          <select class="hud-select" id="growthModelSelect">
+            <option value="logistic" selected>Logistic (density-limited)</option>
+            <option value="gompertz">Gompertz (asymmetric lag/plateau)</option>
+            <option value="exponential">Exponential (unconstrained, early-phase)</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <div class="control-label"><span>Assumed Doubling Time</span><span class="num-val" id="doublingTimeVal">30 min</span></div>
+          <input type="range" id="doublingTimeSlider" min="15" max="180" step="5" value="30">
+        </div>
+
+        <div class="control-group">
+          <div class="control-label"><span>Simulated Incubation Window</span><span class="num-val" id="durationVal">12 h</span></div>
+          <input type="range" id="durationSlider" min="1" max="48" step="1" value="12">
+        </div>
+
+        <div class="control-group">
+          <div class="control-label"><span>Lag Phase Offset</span><span class="num-val" id="lagVal">1.0 h</span></div>
+          <input type="range" id="lagSlider" min="0" max="6" step="0.5" value="1">
+        </div>
+
+        <div class="playback-bar">
+          <button class="play-btn" id="playbackBtn" title="Play growth animation on plate">▶</button>
+          <div class="playback-scrub">
+            <input type="range" id="playbackScrubber" min="0" max="12" step="0.1" value="0">
+            <div class="playback-time"><span id="playbackHourLabel">T+0.0h</span><span id="playbackCountLabel">0 CFU on plate</span></div>
+          </div>
+          <div class="playback-badge">LIVE PLATE BLOOM</div>
+        </div>
+
+        <div class="chart-canvas-container" style="height:200px;">
+          <canvas id="growthChart"></canvas>
+        </div>
+
+        <div class="hud-row">
+          <div class="hud-stat-box">
+            <div class="val" id="growthProjCount">–</div>
+            <div class="lbl">Projected CFU @ T</div>
+          </div>
+          <div class="hud-stat-box alt">
+            <div class="val" id="growthConfluence">–</div>
+            <div class="lbl">Projected Confluence</div>
+          </div>
+          <div class="hud-stat-box green">
+            <div class="val" id="growthTTC">–</div>
+            <div class="lbl">Est. Time to Confluence</div>
+          </div>
+        </div>
+
+        <div class="cleanup-notice active" style="margin-top:12px;">
+          <strong>SIMULATION MODE:</strong> This curve is a modeled projection seeded from the current detected colony count, extrapolated forward with standard bacterial growth kinetics — it is not measured time-lapse data. Actual growth depends on species, media composition, temperature, and incubation conditions, and can deviate substantially from any modeled curve.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Time-Series Growth Kinetics<span class="sim-badge" style="background:rgba(0,255,102,0.12); color: var(--neon-green); border-color: rgba(0,255,102,0.3);">Measured Fit</span></div>
+
+        <div class="cleanup-notice active" style="margin-bottom:14px;">
+          Upload the <b>same plate</b> photographed at two or more incubation timepoints (e.g. T0, T2h, T4h...). Each image is run through the same detection pipeline to get an actual measured colony count, and a growth curve is <b>fitted</b> to those measurements — not simulated from a single count.
+        </div>
+
+        <div class="control-group" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+          <div style="flex:1; min-width:160px;">
+            <div class="control-label"><span>Elapsed Time (hours)</span></div>
+            <input type="number" id="tsHourInput" class="hud-select" min="0" step="0.25" value="0" style="width:100%;">
+          </div>
+          <button class="btn primary" id="tsAddBtn" style="height:38px;">+ Add Timepoint Photo</button>
+          <input type="file" id="tsFileInput" accept="image/*" style="display:none;">
+        </div>
+
+        <div id="tsPointList" style="margin:14px 0; display:flex; flex-direction:column; gap:6px;"></div>
+        <div class="empty-state" id="tsEmpty" style="font-family: var(--mono); font-size:11px; color: var(--text-dim);">No timepoints added yet.</div>
+
+        <div class="control-group">
+          <div class="control-label"><span>Model to Fit</span></div>
+          <select class="hud-select" id="fitModelSelect">
+            <option value="logistic" selected>Logistic (density-limited)</option>
+            <option value="gompertz">Gompertz (asymmetric lag/plateau)</option>
+            <option value="exponential">Exponential (unconstrained, early-phase)</option>
+          </select>
+        </div>
+
+        <button class="btn primary" id="tsFitBtn" style="width:100%; margin-bottom:14px;" disabled>Fit Growth Curve to Measured Data</button>
+
+        <div class="chart-canvas-container" style="height:200px; display:none;" id="tsChartWrap">
+          <canvas id="tsFitChart"></canvas>
+        </div>
+
+        <div class="hud-row" id="tsStatsRow" style="display:none;">
+          <div class="hud-stat-box">
+            <div class="val" id="tsFitRate">–</div>
+            <div class="lbl">Fitted Doubling Time</div>
+          </div>
+          <div class="hud-stat-box alt">
+            <div class="val" id="tsFitK">–</div>
+            <div class="lbl">Fitted Carrying Capacity</div>
+          </div>
+          <div class="hud-stat-box green">
+            <div class="val" id="tsFitR2">–</div>
+            <div class="lbl">Fit R²</div>
+          </div>
+        </div>
+
+        <button class="btn" id="tsApplyBtn" style="width:100%; display:none; margin-top:10px;">Apply Fitted Parameters to Simulation Above</button>
+
+        <div class="cleanup-notice" style="margin-top:12px;" id="tsFitNotice">
+          <strong>NOTE:</strong> With only 2–3 timepoints, fitted parameters (especially carrying capacity) carry wide uncertainty. Treat R² as a goodness-of-fit indicator for this dataset, not a validated predictive accuracy claim — more timepoints and biological replicates materially improve reliability.
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card gauge-card">
+        <div class="gauge-ring-wrap">
+          <svg viewBox="0 0 128 128">
+            <circle class="gauge-track" cx="64" cy="64" r="54"></circle>
+            <circle class="gauge-progress" id="gaugeRing" cx="64" cy="64" r="54" stroke-dasharray="339.29" stroke-dashoffset="339.29"></circle>
+          </svg>
+          <div class="gauge-center">
+            <div class="gauge-num" id="gaugeNum">–</div>
+            <div class="gauge-unit">HEALTH IDX</div>
+          </div>
+        </div>
+        <div class="gauge-breakdown">
+          <div class="card-label" style="margin:0 0 2px 0;">Plate Health Index</div>
+          <div class="gauge-metric"><b>Diversity</b><div class="gauge-metric-track"><div class="gauge-metric-fill" id="gaugeDiversityFill" style="width:0%; background: var(--neon-cyan);"></div></div><div class="gauge-metric-val" id="gaugeDiversityVal">0%</div></div>
+          <div class="gauge-metric"><b>Density</b><div class="gauge-metric-track"><div class="gauge-metric-fill" id="gaugeDensityFill" style="width:0%; background: var(--neon-amber);"></div></div><div class="gauge-metric-val" id="gaugeDensityVal">0%</div></div>
+          <div class="gauge-metric"><b>Cohesion</b><div class="gauge-metric-track"><div class="gauge-metric-fill" id="gaugeCohesionFill" style="width:0%; background: var(--neon-green);"></div></div><div class="gauge-metric-val" id="gaugeCohesionVal">0%</div></div>
+          <div class="gauge-verdict" id="gaugeVerdict" style="color: var(--text-dim);">AWAITING PLATE DATA</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">CV Engine Controls</div>
+
+        <div class="toggle-container">
+          <span>
+            <b>Automated Optimization</b>
+            <span class="sub-lbl">Otsu dynamic thresholding</span>
+          </span>
+          <div class="switch-box on" id="autoSwitch"></div>
+        </div>
+
+        <div class="toggle-container auto-hide-row">
+          <span>
+            <b>Invert Luminance Polarity</b>
+            <span class="sub-lbl" id="polarityLabel">Colonies darker than background</span>
+          </span>
+          <div class="switch-box alt" id="polaritySwitch"></div>
+        </div>
+
+        <div class="control-group auto-hide-row">
+          <div class="control-label"><span>Luminance Threshold Cutoff</span><span class="num-val" id="threshVal">50%</span></div>
+          <input type="range" id="threshSlider" min="0" max="100" value="50">
+        </div>
+
+        <div class="control-group auto-hide-row">
+          <div class="control-label"><span>Minimum Colony Perimeter (px²)</span><span class="num-val" id="minAreaVal">15</span></div>
+          <input type="range" id="minAreaSlider" min="2" max="200" value="15">
+        </div>
+
+        <div class="control-group auto-hide-row">
+          <div class="control-label"><span>Maximum Colony Perimeter (px²)</span><span class="num-val" id="maxAreaVal">4000</span></div>
+          <input type="range" id="maxAreaSlider" min="500" max="20000" value="4000">
+        </div>
+
+        <div class="toggle-container">
+          <span>
+            <b>Edge Vector Isolation</b>
+            <span class="sub-lbl">Ignore dish rim collisions</span>
+          </span>
+          <div class="switch-box on" id="edgeSwitch"></div>
+        </div>
+
+        <div class="toggle-container">
+          <span>
+            <b>Geometric Eccentricity Filter</b>
+            <span class="sub-lbl">Scrub linear structural noise</span>
+          </span>
+          <div class="switch-box on" id="shapeSwitch"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Algorithmic Taxonomy Matrix</div>
+        <div id="taxonomyContainer"></div>
+        <div class="empty-state" id="taxonomyEmpty">Awaiting colony visual extraction sequence...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<canvas id="processingCanvas" style="display:none;"></canvas>
+
+<script>
+/* --- Core Global Architectures --- */
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const workspace = document.getElementById('workspace');
+const mainCanvas = document.getElementById('mainCanvas');
+const ctx = mainCanvas.getContext('2d', { willReadFrequently: true });
+const zoomCanvas = document.getElementById('zoomCanvas');
+const zoomCtx = zoomCanvas.getContext('2d');
+const processingCanvas = document.getElementById('processingCanvas');
+const pctx = processingCanvas.getContext('2d', { willReadFrequently: true });
+
+/* UI HUD Interactivity Trackers */
+const hudCount = document.getElementById('hudCount');
+const hudDensity = document.getElementById('hudDensity');
+const hudShape = document.getElementById('hudShape');
+const remountBtn = document.getElementById('remountBtn');
+const aiCleanupBtn = document.getElementById('aiCleanupBtn');
+const undoCleanupBtn = document.getElementById('undoCleanupBtn');
+const cleanupNotice = document.getElementById('cleanupNotice');
+const netDot = document.getElementById('netDot');
+const netStatus = document.getElementById('netStatus');
+const genusDot = document.getElementById('genusDot');
+const genusStatus = document.getElementById('genusStatus');
+const scanIndicator = document.getElementById('scanIndicator');
+
+/* Contamination / artifact HUD nodes */
+const hudContamPct = document.getElementById('hudContamPct');
+const hudBubblePct = document.getElementById('hudBubblePct');
+const hudCleanPct = document.getElementById('hudCleanPct');
+
+/* Plate Health gauge nodes */
+const gaugeRing = document.getElementById('gaugeRing');
+const gaugeNum = document.getElementById('gaugeNum');
+const gaugeVerdict = document.getElementById('gaugeVerdict');
+const gaugeDiversityFill = document.getElementById('gaugeDiversityFill');
+const gaugeDiversityVal = document.getElementById('gaugeDiversityVal');
+const gaugeDensityFill = document.getElementById('gaugeDensityFill');
+const gaugeDensityVal = document.getElementById('gaugeDensityVal');
+const gaugeCohesionFill = document.getElementById('gaugeCohesionFill');
+const gaugeCohesionVal = document.getElementById('gaugeCohesionVal');
+const GAUGE_CIRCUMFERENCE = 2 * Math.PI * 54;
+
+/* Growth playback nodes */
+const playbackBtn = document.getElementById('playbackBtn');
+const playbackScrubber = document.getElementById('playbackScrubber');
+const playbackHourLabel = document.getElementById('playbackHourLabel');
+const playbackCountLabel = document.getElementById('playbackCountLabel');
+let playbackActive = false;
+let playbackAnimHandle = null;
+let playbackWallStart = 0;
+let playbackStartHour = 0;
+const PLAYBACK_REALTIME_SECONDS = 14; // wall-clock seconds to animate the full simulated window
+let syntheticColonySlots = null; // precomputed daughter-colony placement, seeded per image
+let histogramChartInstance = null;
+
+/* Configuration Nodes */
+const autoSwitch = document.getElementById('autoSwitch');
+const polaritySwitch = document.getElementById('polaritySwitch');
+const polarityLabel = document.getElementById('polarityLabel');
+const threshSlider = document.getElementById('threshSlider');
+const threshVal = document.getElementById('threshVal');
+const minAreaSlider = document.getElementById('minAreaSlider');
+const minAreaVal = document.getElementById('minAreaVal');
+const maxAreaSlider = document.getElementById('maxAreaSlider');
+const maxAreaVal = document.getElementById('maxAreaVal');
+const edgeSwitch = document.getElementById('edgeSwitch');
+const shapeSwitch = document.getElementById('shapeSwitch');
+const hideRows = document.querySelectorAll('.auto-hide-row');
+const taxonomyContainer = document.getElementById('taxonomyContainer');
+const taxonomyEmpty = document.getElementById('taxonomyEmpty');
+
+/* Growth predictor nodes */
+const growthModelSelect = document.getElementById('growthModelSelect');
+const doublingTimeSlider = document.getElementById('doublingTimeSlider');
+const doublingTimeVal = document.getElementById('doublingTimeVal');
+const durationSlider = document.getElementById('durationSlider');
+const durationVal = document.getElementById('durationVal');
+const lagSlider = document.getElementById('lagSlider');
+const lagVal = document.getElementById('lagVal');
+const growthProjCount = document.getElementById('growthProjCount');
+const growthConfluence = document.getElementById('growthConfluence');
+const growthTTC = document.getElementById('growthTTC');
+let growthChartInstance = null;
+
+let systemAutoTune = true;
+let excludeRimEdges = true;
+let detectedPlateGeometry = null; // { cx, cy, r, confidence } from detectPlateBoundary()
+let filterDeformedShapes = true;
+let coloniesAreDarker = true;
+let baselineImageBuffer = null;
+// Cached, GPU-friendly copy of the base plate image. Every animation loop
+// (radar sweep, growth playback) needs to redraw the plain image underneath
+// the overlays on every single frame — doing that via ctx.putImageData() is
+// a synchronous full-frame CPU pixel upload every frame, which is what was
+// making scanning feel laggy. Keeping this canvas in sync and using
+// ctx.drawImage() from it instead lets the browser composite it on the GPU.
+const baseImageCanvas = document.createElement('canvas');
+const baseImageCtx = baseImageCanvas.getContext('2d');
+const FRAME_RENDER_LIMIT = 900;
+
+let mobilenetEngine = null;
+let clusterCleanupActive = false;
+let catalogedBlobs = [];
+let algorithmicallyPurgedIndices = new Set();
+let scatterChartInstance = null;
+
+/* --- Taxonomy Database Configurations --- */
+const TAXONOMY_REGISTRY = [
+  { name: 'Staphylococcus', color: 'white_cream', size: 'medium', margin: 'regular', swatch: 'var(--neon-amber)' },
+  { name: 'E. coli',        color: 'grey',        size: 'medium', margin: 'regular', swatch: 'var(--neon-cyan)' },
+  { name: 'Streptococcus',  color: 'white_cream', size: 'small',  margin: 'regular', swatch: 'var(--neon-pink)' },
+  { name: 'Pseudomonas',    color: 'green_grey',  size: 'medium', margin: 'irregular', swatch: '#8a7fd0' },
+  { name: 'Bacillus',       color: 'white_cream', size: 'large',  margin: 'irregular', swatch: 'var(--neon-green)' },
+];
+const UNMAPPED_TAXA = { name: 'Unresolved Strain', swatch: '#5a6b68' };
+const PENDING_TAXA = { name: 'Classifying…', swatch: '#3a5558' };
+let genusClassificationToken = 0;
+
+/* --- Initialize Advanced Neural Processing Pipelines --- */
+async function bootNeuralEngine() {
+  try {
+    mobilenetEngine = await mobilenet.load({ version: 2, alpha: 1.0 });
+    netDot.className = "dot ready";
+    netStatus.textContent = "NEURAL CLEANUP ENGINE READY";
+    aiCleanupBtn.disabled = false;
+  } catch(err) {
+    netStatus.textContent = "ENGINE OFFLINE (LOCAL SIMULATION RUNNING)";
+  }
+}
+bootNeuralEngine();
+
+/* --- Dynamic Data Chart Component Initialization --- */
+function refreshProfilingGraphs(blobs) {
+  const activeDataset = blobs.filter((_, idx) => !algorithmicallyPurgedIndices.has(idx));
+  const scatterCoords = activeDataset.map(b => ({ x: b.area, y: b.confidence }));
+
+  if (scatterChartInstance) {
+    scatterChartInstance.data.datasets[0].data = scatterCoords;
+    scatterChartInstance.update();
+    return;
+  }
+
+  const chartElement = document.getElementById('scatterChart').getContext('2d');
+  scatterChartInstance = new Chart(chartElement, {
+    type: 'scatter',
+    data: {
+      datasets: [{
+        label: 'Colony Metrics Vector',
+        data: scatterCoords,
+        backgroundColor: 'rgba(0, 242, 254, 0.6)',
+        borderColor: varCSS('--neon-cyan'),
+        pointRadius: 5,
+        pointHoverRadius: 7
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { 
+          title: { display: true, text: 'Geometric Area (px²)', color: varCSS('--text-dim'), font: { family: varCSS('--mono'), size: 10 } },
+          grid: { color: 'rgba(27, 50, 53, 0.4)' }, ticks: { color: varCSS('--text-dim') }
+        },
+        y: { 
+          title: { display: true, text: 'Cohesion Score (%)', color: varCSS('--text-dim'), font: { family: varCSS('--mono'), size: 10 } },
+          grid: { color: 'rgba(27, 50, 53, 0.4)' }, ticks: { color: varCSS('--text-dim') }, max: 100, min: 0
+        }
+      }
+    }
+  });
+}
+
+function varCSS(variableName) {
+  return getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
+}
+
+/* --- Live size-distribution histogram: redraws every time detection params
+   change (sliders, toggles, cleanup) so it always reflects the current
+   catalogedBlobs / algorithmicallyPurgedIndices state. --- */
+function updateSizeHistogram(blobs) {
+  const visible = blobs.filter((_, i) => !algorithmicallyPurgedIndices.has(i));
+  const areas = visible.map(b => b.area);
+
+  const BIN_COUNT = 8;
+  let binLabels = [];
+  const binCounts = new Array(BIN_COUNT).fill(0);
+  if (areas.length > 0) {
+    const minA = Math.min(...areas), maxA = Math.max(...areas);
+    const span = Math.max(1, maxA - minA);
+    const binSize = span / BIN_COUNT;
+    areas.forEach(a => {
+      let idx = Math.floor((a - minA) / binSize);
+      if (idx >= BIN_COUNT) idx = BIN_COUNT - 1;
+      if (idx < 0) idx = 0;
+      binCounts[idx]++;
+    });
+    for (let i = 0; i < BIN_COUNT; i++) binLabels.push(Math.round(minA + i * binSize) + 'px²');
+  } else {
+    binLabels = new Array(BIN_COUNT).fill('');
+  }
+
+  const canvasEl = document.getElementById('histogramChart');
+  if (!canvasEl) return;
+
+  if (histogramChartInstance) {
+    histogramChartInstance.data.labels = binLabels;
+    histogramChartInstance.data.datasets[0].data = binCounts;
+    histogramChartInstance.update();
+    return;
+  }
+
+  histogramChartInstance = new Chart(canvasEl.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: binLabels,
+      datasets: [{
+        label: 'Colonies',
+        data: binCounts,
+        backgroundColor: 'rgba(255, 170, 0, 0.55)',
+        borderColor: varCSS('--neon-amber'),
+        borderWidth: 1,
+        borderRadius: 3,
+        maxBarThickness: 26
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 380, easing: 'easeOutQuart' },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          ticks: { color: varCSS('--text-dim'), font: { family: varCSS('--mono'), size: 8 }, maxRotation: 60, minRotation: 60 },
+          grid: { display: false }
+        },
+        y: {
+          ticks: { color: varCSS('--text-dim'), precision: 0 },
+          grid: { color: 'rgba(27, 50, 53, 0.4)' },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+}
+
+/* --- Animated Plate Health / Biodiversity gauge ---
+   Composite HUD score blending three signals into a single "sci-fi dashboard"
+   ring: genus diversity (Shannon evenness, normalized), colony density relative
+   to the plate's estimated carrying capacity, and average shape cohesion.
+   This is a descriptive composite for at-a-glance triage, not a clinical metric. */
+function shannonDiversityNormalized(counts) {
+  const total = counts.reduce((s, c) => s + c, 0);
+  if (total === 0 || counts.length <= 1) return 0;
+  let entropy = 0;
+  counts.forEach(c => { if (c > 0) { const p = c / total; entropy -= p * Math.log(p); } });
+  const maxEntropy = Math.log(counts.length);
+  return maxEntropy > 0 ? entropy / maxEntropy : 0;
+}
+
+function updatePlateHealthGauge() {
+  const colonyBlobs = catalogedBlobs.filter((b, i) =>
+    !algorithmicallyPurgedIndices.has(i) && b.artifactType !== 'contaminant' && b.artifactType !== 'bubble'
+  );
+
+  if (!baselineImageBuffer || colonyBlobs.length === 0) {
+    gaugeRing.setAttribute('stroke-dashoffset', GAUGE_CIRCUMFERENCE);
+    gaugeRing.style.stroke = varCSS('--text-dim');
+    gaugeNum.textContent = '–';
+    gaugeVerdict.textContent = 'AWAITING PLATE DATA';
+    gaugeVerdict.style.color = varCSS('--text-dim');
+    [gaugeDiversityFill, gaugeDensityFill, gaugeCohesionFill].forEach(el => el.style.width = '0%');
+    gaugeDiversityVal.textContent = '0%'; gaugeDensityVal.textContent = '0%'; gaugeCohesionVal.textContent = '0%';
+    return;
+  }
+
+  const genusCounts = {};
+  colonyBlobs.forEach(b => { const n = (b.taxon || UNMAPPED_TAXA).name; genusCounts[n] = (genusCounts[n] || 0) + 1; });
+  const diversity = shannonDiversityNormalized(Object.values(genusCounts));
+
+  const w = baselineImageBuffer.width, h = baselineImageBuffer.height;
+  const K = estimateCarryingCapacity(catalogedBlobs, w, h);
+  const density = Math.max(0, Math.min(1, colonyBlobs.length / K));
+
+  const cohesion = colonyBlobs.reduce((s, b) => s + (b.confidence || 0), 0) / colonyBlobs.length / 100;
+
+  const composite = diversity * 0.30 + density * 0.30 + cohesion * 0.40;
+  const score = Math.round(Math.max(0, Math.min(1, composite)) * 100);
+
+  gaugeRing.setAttribute('stroke-dashoffset', GAUGE_CIRCUMFERENCE * (1 - composite));
+  const ringColor = score >= 70 ? varCSS('--neon-green') : (score >= 40 ? varCSS('--neon-amber') : varCSS('--neon-pink'));
+  gaugeRing.style.stroke = ringColor;
+  gaugeNum.textContent = score;
+
+  gaugeDiversityFill.style.width = Math.round(diversity * 100) + '%';
+  gaugeDiversityVal.textContent = Math.round(diversity * 100) + '%';
+  gaugeDensityFill.style.width = Math.round(density * 100) + '%';
+  gaugeDensityVal.textContent = Math.round(density * 100) + '%';
+  gaugeCohesionFill.style.width = Math.round(cohesion * 100) + '%';
+  gaugeCohesionVal.textContent = Math.round(cohesion * 100) + '%';
+
+  let verdict, color;
+  if (score >= 75) { verdict = 'HIGH-INTEGRITY CULTURE'; color = varCSS('--neon-green'); }
+  else if (score >= 50) { verdict = 'NOMINAL PLATE CONDITION'; color = varCSS('--neon-cyan'); }
+  else if (score >= 25) { verdict = 'MODERATE VARIANCE DETECTED'; color = varCSS('--neon-amber'); }
+  else { verdict = 'LOW COHESION — REVIEW PLATE'; color = varCSS('--neon-pink'); }
+  gaugeVerdict.textContent = verdict;
+  gaugeVerdict.style.color = color;
+}
+
+/* --- Media Capture Processing Pipelines --- */
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault(); dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) processIncomingPlate(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files.length) processIncomingPlate(e.target.files[0]);
+});
+remountBtn.addEventListener('click', () => fileInput.click());
+
+function processIncomingPlate(file) {
+  if (!file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const asset = new Image();
+    asset.onload = () => {
+      let width = asset.width, height = asset.height;
+      if (width > FRAME_RENDER_LIMIT || height > FRAME_RENDER_LIMIT) {
+        const factor = FRAME_RENDER_LIMIT / Math.max(width, height);
+        width = Math.round(width * factor); height = Math.round(height * factor);
+      }
+      mainCanvas.width = width; mainCanvas.height = height;
+      processingCanvas.width = width; processingCanvas.height = height;
+      ctx.drawImage(asset, 0, 0, width, height);
+      baselineImageBuffer = ctx.getImageData(0, 0, width, height);
+      baseImageCanvas.width = width; baseImageCanvas.height = height;
+      baseImageCtx.drawImage(asset, 0, 0, width, height);
+      
+      dropzone.style.display = 'none';
+      workspace.classList.add('active');
+      remountBtn.style.display = 'inline-flex';
+      aiCleanupBtn.style.display = 'inline-flex';
+      undoCleanupBtn.style.display = 'none';
+      clusterCleanupActive = false;
+      cleanupNotice.classList.remove('active');
+      mainCanvas.classList.remove('cleanup-mode');
+      algorithmicallyPurgedIndices = new Set();
+      executeComputerVisionPass();
+    };
+    asset.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+/* --- Real-time Digital Zoom Inspection Core --- */
+mainCanvas.addEventListener('mousemove', e => {
+  if (!baselineImageBuffer) return;
+  const metrics = mainCanvas.getBoundingClientRect();
+  const rawX = (e.clientX - metrics.left) * (mainCanvas.width / metrics.width);
+  const rawY = (e.clientY - metrics.top) * (mainCanvas.height / metrics.height);
+  
+  const viewportWidth = 32, viewportHeight = 16;
+  zoomCanvas.width = viewportWidth; zoomCanvas.height = viewportHeight;
+  
+  zoomCtx.clearRect(0,0,viewportWidth,viewportHeight);
+  zoomCtx.drawImage(mainCanvas, rawX - viewportWidth/2, rawY - viewportHeight/2, viewportWidth, viewportHeight, 0, 0, viewportWidth, viewportHeight);
+});
+
+/* --- Computer Vision Processing Framework --- */
+
+/* Illumination correction: real plate photos are rarely lit evenly (phone
+   flash hot-spots, shadowing near dish rim), which throws off a single
+   global threshold. We estimate a smooth local-brightness field via a fast
+   box blur (summed-area table) and subtract it back out, flattening the
+   image to roughly uniform illumination before anything else runs. */
+function buildIntegralImage(gray, w, h) {
+  const integral = new Float64Array((w + 1) * (h + 1));
+  for (let y = 0; y < h; y++) {
+    let rowSum = 0;
+    for (let x = 0; x < w; x++) {
+      rowSum += gray[y * w + x];
+      integral[(y + 1) * (w + 1) + (x + 1)] = integral[y * (w + 1) + (x + 1)] + rowSum;
+    }
+  }
+  return integral;
+}
+function fastBoxBlur(gray, w, h, radius) {
+  const integral = buildIntegralImage(gray, w, h);
+  const out = new Float64Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.max(0, y - radius), y1 = Math.min(h - 1, y + radius);
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.max(0, x - radius), x1 = Math.min(w - 1, x + radius);
+      const area = (x1 - x0 + 1) * (y1 - y0 + 1);
+      const sum = integral[(y1 + 1) * (w + 1) + (x1 + 1)] - integral[y0 * (w + 1) + (x1 + 1)]
+                - integral[(y1 + 1) * (w + 1) + x0] + integral[y0 * (w + 1) + x0];
+      out[y * w + x] = sum / area;
+    }
+  }
+  return out;
+}
+function computeIlluminationCorrectedGray(pixelData, w, h) {
+  const gray = new Uint8Array(w * h);
+  let globalSum = 0;
+  for (let i = 0; i < w * h; i++) {
+    const o = i * 4;
+    const v = 0.299 * pixelData[o] + 0.587 * pixelData[o + 1] + 0.114 * pixelData[o + 2];
+    gray[i] = v; globalSum += v;
+  }
+  const globalMean = globalSum / (w * h);
+  // Radius large enough to capture lighting gradients but not individual colonies.
+  const radius = Math.max(10, Math.round(Math.min(w, h) / 9));
+  const localMean = fastBoxBlur(gray, w, h, radius);
+  const corrected = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    corrected[i] = Math.max(0, Math.min(255, Math.round(gray[i] - localMean[i] + globalMean)));
+  }
+  // Exposed alongside the buffer (rather than recomputed later) so downstream
+  // confidence scoring can compare a blob's own pixels against the plate's
+  // true overall brightness instead of guessing a fixed constant.
+  corrected.globalMean = globalMean;
+  return corrected;
+}
+
+/* Marker-based watershed split for merged/touching colonies: a chamfer
+   distance transform finds how "deep" each foreground pixel sits inside its
+   blob, local maxima of that field mark separate colony centers, and a
+   multi-source flood fill assigns every pixel to its nearest center. */
+function chamferDistanceTransform(mask, w, h) {
+  const INF = 1e6;
+  const dist = new Float32Array(w * h).fill(INF);
+  for (let i = 0; i < w * h; i++) if (mask[i] === 0) dist[i] = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      if (dist[idx] === 0) continue;
+      let best = dist[idx];
+      if (x > 0) best = Math.min(best, dist[idx - 1] + 1);
+      if (y > 0) best = Math.min(best, dist[idx - w] + 1);
+      if (x > 0 && y > 0) best = Math.min(best, dist[idx - w - 1] + 1.4142);
+      if (x < w - 1 && y > 0) best = Math.min(best, dist[idx - w + 1] + 1.4142);
+      dist[idx] = best;
+    }
+  }
+  for (let y = h - 1; y >= 0; y--) {
+    for (let x = w - 1; x >= 0; x--) {
+      const idx = y * w + x;
+      if (dist[idx] === 0) continue;
+      let best = dist[idx];
+      if (x < w - 1) best = Math.min(best, dist[idx + 1] + 1);
+      if (y < h - 1) best = Math.min(best, dist[idx + w] + 1);
+      if (x < w - 1 && y < h - 1) best = Math.min(best, dist[idx + w + 1] + 1.4142);
+      if (x > 0 && y < h - 1) best = Math.min(best, dist[idx + w - 1] + 1.4142);
+      dist[idx] = best;
+    }
+  }
+  return dist;
+}
+function findLocalMaxima(dist, w, h, minSeparation) {
+  const candidates = [];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      if (dist[idx] < 1.5) continue;
+      let isMax = true;
+      for (let dy = -1; dy <= 1 && isMax; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          if (dist[ny * w + nx] > dist[idx]) { isMax = false; break; }
+        }
+      }
+      if (isMax) candidates.push({ x, y, val: dist[idx] });
+    }
+  }
+  candidates.sort((a, b) => b.val - a.val);
+  const kept = [];
+  candidates.forEach(c => {
+    if (kept.every(k => Math.hypot(k.x - c.x, k.y - c.y) >= minSeparation)) kept.push(c);
+  });
+  return kept;
+}
+function splitMergedBlob(validatedBinary, pixelData, w, h, blob) {
+  const bw = blob.maxX - blob.minX + 1, bh = blob.maxY - blob.minY + 1;
+  const mask = new Uint8Array(bw * bh);
+  for (let y = 0; y < bh; y++) {
+    for (let x = 0; x < bw; x++) {
+      mask[y * bw + x] = validatedBinary[(blob.minY + y) * w + (blob.minX + x)];
+    }
+  }
+  const dist = chamferDistanceTransform(mask, bw, bh);
+  const approxRadius = Math.sqrt(blob.area / Math.PI);
+  const peaks = findLocalMaxima(dist, bw, bh, Math.max(2, Math.round(approxRadius * 0.95)));
+  if (peaks.length < 2) return null;
+
+  const labels = new Int32Array(bw * bh).fill(-1);
+  const queue = [];
+  peaks.forEach((p, idx) => { labels[p.y * bw + p.x] = idx; queue.push(p.y * bw + p.x); });
+  let qi = 0;
+  while (qi < queue.length) {
+    const idx = queue[qi++];
+    const cy = (idx / bw) | 0, cx = idx - cy * bw;
+    const lbl = labels[idx];
+    const deltas = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dy] of deltas) {
+      const nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= bw || ny >= bh) continue;
+      const nIdx = ny * bw + nx;
+      if (mask[nIdx] !== 1 || labels[nIdx] !== -1) continue;
+      labels[nIdx] = lbl; queue.push(nIdx);
+    }
+  }
+
+  const subBlobs = peaks.map(() => ({
+    area: 0, cx: 0, cy: 0, minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity,
+    colorR: 0, colorG: 0, colorB: 0
+  }));
+  for (let y = 0; y < bh; y++) {
+    for (let x = 0; x < bw; x++) {
+      const idx = y * bw + x;
+      if (mask[idx] !== 1 || labels[idx] === -1) continue;
+      const sb = subBlobs[labels[idx]];
+      const gx = x + blob.minX, gy = y + blob.minY;
+      const po = (gy * w + gx) * 4;
+      sb.area++; sb.cx += gx; sb.cy += gy;
+      sb.colorR += pixelData[po]; sb.colorG += pixelData[po + 1]; sb.colorB += pixelData[po + 2];
+      if (gx < sb.minX) sb.minX = gx; if (gx > sb.maxX) sb.maxX = gx;
+      if (gy < sb.minY) sb.minY = gy; if (gy > sb.maxY) sb.maxY = gy;
+    }
+  }
+  return subBlobs.filter(sb => sb.area > 0).map(sb => ({
+    area: sb.area, cx: sb.cx / sb.area, cy: sb.cy / sb.area,
+    minX: sb.minX, maxX: sb.maxX, minY: sb.minY, maxY: sb.maxY,
+    avgR: sb.colorR / sb.area, avgG: sb.colorG / sb.area, avgB: sb.colorB / sb.area
+  }));
+}
+
+/* --- Fragmentation safety net ---
+   binaryOpen()'s erosion pass can, on small or thinly-connected colonies,
+   sever one real colony into two adjacent foreground blobs (the opposite
+   problem from the merged-blob case that splitMergedBlob handles). Two
+   blobs whose centers sit much closer together than either one's own
+   equivalent-circle radius are almost certainly a fragmentation artifact
+   rather than two distinct touching colonies — genuinely separate colonies
+   practically always sit at least close to their combined radii apart.
+   This merges those pairs back into one blob (area-weighted centroid/color)
+   before they ever reach the counter or the genus classifier. */
+function mergeFragmentedBlobs(blobs) {
+  if (blobs.length < 2) return blobs;
+  const n = blobs.length;
+  const radiusOf = b => Math.sqrt(Math.max(1, b.area) / Math.PI);
+  const order = blobs.map((_, i) => i).sort((a, b) => blobs[b].area - blobs[a].area);
+  const used = new Array(n).fill(false);
+  const merged = [];
+
+  order.forEach(i => {
+    if (used[i]) return;
+    used[i] = true;
+    let base = Object.assign({}, blobs[i]);
+
+    for (const j of order) {
+      if (used[j] || j === i) continue;
+      const bj = blobs[j];
+      const dist = Math.hypot(base.cx - bj.cx, base.cy - bj.cy);
+      const mergeRadius = Math.max(radiusOf(base), radiusOf(bj)) * 0.45;
+      if (dist >= mergeRadius) continue;
+
+      const totalArea = base.area + bj.area;
+      base = {
+        area: totalArea,
+        cx: (base.cx * base.area + bj.cx * bj.area) / totalArea,
+        cy: (base.cy * base.area + bj.cy * bj.area) / totalArea,
+        minX: Math.min(base.minX, bj.minX), maxX: Math.max(base.maxX, bj.maxX),
+        minY: Math.min(base.minY, bj.minY), maxY: Math.max(base.maxY, bj.maxY),
+        avgR: (base.avgR * base.area + bj.avgR * bj.area) / totalArea,
+        avgG: (base.avgG * base.area + bj.avgG * bj.area) / totalArea,
+        avgB: (base.avgB * base.area + bj.avgB * bj.area) / totalArea
+      };
+      used[j] = true;
+    }
+    merged.push(base);
+  });
+  return merged;
+}
+
+function evaluateOtsuSegmentation(grayscaleBuffer, w, h, mask) {
+  const distributionHist = new Array(256).fill(0);
+  let overallPixels = 0;
+  for (let idx = 0; idx < grayscaleBuffer.length; idx++) {
+    if (mask && mask[idx] !== 1) continue;
+    distributionHist[grayscaleBuffer[idx]]++;
+    overallPixels++;
+  }
+  if (overallPixels === 0) overallPixels = w * h; // mask empty/unavailable — fall back to full frame stats
+  let runningSum = 0;
+  for (let i = 0; i < 256; i++) runningSum += i * distributionHist[i];
+  
+  let backgroundWeight = 0, backgroundSum = 0, statisticalMaxVariance = 0, idealThreshold = 128;
+  for (let i = 0; i < 256; i++) {
+    backgroundWeight += distributionHist[i];
+    if (backgroundWeight === 0) continue;
+    const foregroundWeight = overallPixels - backgroundWeight;
+    if (foregroundWeight === 0) break;
+    
+    backgroundSum += i * distributionHist[i];
+    const backgroundMean = backgroundSum / backgroundWeight;
+    const foregroundMean = (runningSum - backgroundSum) / foregroundWeight;
+    
+    const intermediateVariance = backgroundWeight * foregroundWeight * Math.pow(backgroundMean - foregroundMean, 2);
+    if (intermediateVariance > statisticalMaxVariance) {
+      statisticalMaxVariance = intermediateVariance; idealThreshold = i;
+    }
+  }
+  return idealThreshold;
+}
+
+function processMorphologicalDenoise(binaryBuffer, w, h) {
+  const cleanerBuffer = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let evaluationSum = 0, structuralNeighbors = 0;
+      for (let deltaY = -1; deltaY <= 1; deltaY++) {
+        for (let deltaX = -1; deltaX <= 1; deltaX++) {
+          const checkX = x + deltaX, checkY = y + deltaY;
+          if (checkX < 0 || checkY < 0 || checkX >= w || checkY >= h) continue;
+          structuralNeighbors++; evaluationSum += binaryBuffer[checkY * w + checkX];
+        }
+      }
+      cleanerBuffer[y * w + x] = (evaluationSum >= Math.ceil(structuralNeighbors * 0.55)) ? 1 : 0;
+    }
+  }
+  return cleanerBuffer;
+}
+
+function binaryMorphPass(buffer, w, h, mode) {
+  // mode 'erode': pixel survives only if ALL 8 neighbors are foreground.
+  // mode 'dilate': pixel becomes foreground if ANY 8 neighbor is foreground.
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      if (mode === 'dilate' && buffer[idx] === 1) { out[idx] = 1; continue; }
+      if (mode === 'erode' && buffer[idx] === 0) { out[idx] = 0; continue; }
+      let allFg = true, anyFg = buffer[idx] === 1;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy;
+          const onEdge = nx < 0 || ny < 0 || nx >= w || ny >= h;
+          const val = onEdge ? 0 : buffer[ny * w + nx];
+          if (!val) allFg = false;
+          if (val) anyFg = true;
+        }
+      }
+      out[idx] = mode === 'erode' ? (allFg ? 1 : 0) : (anyFg ? 1 : 0);
+    }
+  }
+  return out;
+}
+function binaryOpen(buffer, w, h) {
+  // Erosion then dilation: strips thin protrusions and single-pixel bridges
+  // between adjacent colonies without shrinking the bulk of real blobs.
+  return binaryMorphPass(binaryMorphPass(buffer, w, h, 'erode'), w, h, 'dilate');
+}
+
+function analyzeConnectedComponents(pixelData, w, h, binaryCutoff, evaluateDarker, correctedGray, plateMask) {
+  const coreMatrix = new Uint8Array(w * h);
+  for (let idx = 0; idx < w * h; idx++) {
+    if (plateMask && plateMask[idx] !== 1) continue; // outside the dish — never foreground
+    let grayVal;
+    if (correctedGray) {
+      grayVal = correctedGray[idx];
+    } else {
+      const offset = idx * 4;
+      grayVal = 0.299 * pixelData[offset] + 0.587 * pixelData[offset+1] + 0.114 * pixelData[offset+2];
+    }
+    coreMatrix[idx] = (evaluateDarker ? grayVal < binaryCutoff : grayVal > binaryCutoff) ? 1 : 0;
+  }
+  
+  const smoothedBinary = processMorphologicalDenoise(coreMatrix, w, h);
+  const validatedBinary = binaryOpen(smoothedBinary, w, h);
+  const trackVisited = new Uint8Array(w * h);
+  const memoryStack = new Int32Array(w * h);
+  const identifiedBlobs = [];
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const positionIndex = y * w + x;
+      if (validatedBinary[positionIndex] !== 1 || trackVisited[positionIndex]) continue;
+      
+      let processingPointer = 0;
+      memoryStack[processingPointer++] = positionIndex;
+      trackVisited[positionIndex] = 1;
+      
+      let structuralArea = 0, coordSumX = 0, coordSumY = 0, colorR = 0, colorG = 0, colorB = 0;
+      let extremeMinX = x, extremeMaxX = x, extremeMinY = y, extremeMaxY = y;
+      
+      while (processingPointer > 0) {
+        const structuralIndex = memoryStack[--processingPointer];
+        const currentY = (structuralIndex / w) | 0;
+        const currentX = structuralIndex - currentY * w;
+        
+        structuralArea++; coordSumX += currentX; coordSumY += currentY;
+        const pixelOffset = structuralIndex * 4;
+        colorR += pixelData[pixelOffset]; colorG += pixelData[pixelOffset+1]; colorB += pixelData[pixelOffset+2];
+        
+        if (currentX < extremeMinX) extremeMinX = currentX; if (currentX > extremeMaxX) extremeMaxX = currentX;
+        if (currentY < extremeMinY) extremeMinY = currentY; if (currentY > extremeMaxY) extremeMaxY = currentY;
+        
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const neighborX = currentX + dx, neighborY = currentY + dy;
+            if (neighborX < 0 || neighborY < 0 || neighborX >= w || neighborY >= h) continue;
+            const absoluteNeighborIndex = neighborY * w + neighborX;
+            if (validatedBinary[absoluteNeighborIndex] === 1 && !trackVisited[absoluteNeighborIndex]) {
+              trackVisited[absoluteNeighborIndex] = 1; memoryStack[processingPointer++] = absoluteNeighborIndex;
+            }
+          }
+        }
+      }
+      
+      if (structuralArea >= 1 && structuralArea <= w * h * 0.3) {
+        identifiedBlobs.push({
+          area: structuralArea, cx: coordSumX / structuralArea, cy: coordSumY / structuralArea,
+          minX: extremeMinX, maxX: extremeMaxX, minY: extremeMinY, maxY: extremeMaxY,
+          avgR: colorR / structuralArea, avgG: colorG / structuralArea, avgB: colorB / structuralArea
+        });
+      }
+    }
+  }
+
+  // Oversized blobs are frequently two or more colonies that grew into each
+  // other. Compare each blob against the plate's typical colony size and
+  // attempt a watershed split on the outliers, which meaningfully improves
+  // count accuracy on dense/crowded plates. The area ratio and post-split
+  // sanity check are both deliberately conservative: a single irregularly-
+  // shaped (but genuinely singular) colony should not get chopped into
+  // several phantom colonies just because its outline isn't a clean circle.
+  const referenceAreas = identifiedBlobs.map(b => b.area);
+  const medianBlobArea = medianValue(referenceAreas);
+  let finalBlobs = identifiedBlobs;
+  if (medianBlobArea > 0) {
+    finalBlobs = [];
+    identifiedBlobs.forEach(b => {
+      if (b.area > medianBlobArea * 2.2 && b.area > 25) {
+        const subBlobs = splitMergedBlob(validatedBinary, pixelData, w, h, b);
+        // Reject the split outright if it produced any sliver far smaller
+        // than a typical single colony — that's fragmentation noise, not
+        // a real second colony.
+        const plausible = subBlobs && subBlobs.length >= 2 &&
+          subBlobs.every(sb => sb.area >= medianBlobArea * 0.45);
+        if (plausible) {
+          subBlobs.forEach(sb => finalBlobs.push(sb));
+          return;
+        }
+      }
+      finalBlobs.push(b);
+    });
+  }
+  return mergeFragmentedBlobs(finalBlobs);
+}
+
+function processColorSpectrum(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const maxVal = Math.max(r, g, b), minVal = Math.min(r, g, b);
+  const baselineV = maxVal, gap = maxVal - minVal;
+  const baselineS = maxVal === 0 ? 0 : gap / maxVal;
+  let baselineH = 0;
+  if (gap !== 0) {
+    if (maxVal === r) baselineH = ((g - b) / gap) % 6;
+    else if (maxVal === g) baselineH = (b - r) / gap + 2;
+    else baselineH = (r - g) / gap + 4;
+    baselineH *= 60; if (baselineH < 0) baselineH += 360;
+  }
+  if (baselineS < 0.15) return baselineV > 0.75 ? 'white_cream' : 'grey';
+  if (baselineH >= 70 && baselineH <= 170) return 'green_grey';
+  if (baselineH >= 35 && baselineH < 70) return 'white_cream';
+  return 'other';
+}
+
+function medianValue(arr) {
+  if (!arr.length) return 0;
+  const sorted = arr.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+// Reference antibiotic classes commonly cited per genus in textbooks.
+// Informational only — NOT a treatment recommendation. Real antibiotic
+// selection always requires an actual culture & sensitivity test on the
+// isolate, since resistance varies by strain, region, and patient history.
+const ANTIBIOTIC_DB = {
+  'Staphylococcus': ['Penicillinase-resistant penicillins (e.g. oxacillin)', 'Cephalosporins', 'Vancomycin (if MRSA suspected)'],
+  'E. coli':        ['Fluoroquinolones', 'Third-gen cephalosporins', 'Trimethoprim-sulfamethoxazole'],
+  'Streptococcus':  ['Penicillin', 'Amoxicillin', 'Macrolides (if penicillin-allergic)'],
+  'Pseudomonas':    ['Anti-pseudomonal penicillins (e.g. piperacillin)', 'Ceftazidime/cefepime', 'Fluoroquinolones or aminoglycosides'],
+  'Bacillus':       ['Vancomycin', 'Clindamycin', 'Fluoroquinolones'],
+};
+
+// TAXONOMY_REGISTRY swatches are stored as CSS var() strings (e.g. "var(--neon-amber)")
+// so they can be dropped straight into inline HTML styles. Canvas strokeStyle can't
+// parse var() directly, so this resolves it to a real color via getComputedStyle.
+function resolveSwatch(swatch) {
+  if (swatch && swatch.startsWith('var(')) {
+    const varName = swatch.slice(4, -1).trim();
+    return varCSS(varName);
+  }
+  return swatch;
+}
+
+/* --- Adaptive parameter tuning: Otsu threshold + polarity + size range --- */
+function autoTuneParameters(imageData, correctedGray, plateMask) {
+  const w = imageData.width, h = imageData.height;
+  const data = imageData.data;
+  const gray = correctedGray || computeIlluminationCorrectedGray(data, w, h);
+  const otsu = evaluateOtsuSegmentation(gray, w, h, plateMask);
+
+  // Polarity: agar background normally covers most of the plate, so whichever
+  // side of the threshold is the *minority* of pixels is most likely colonies.
+  // Restricted to inside-the-dish pixels only — otherwise a bright/dark
+  // background surrounding the plate dominates the vote and flips polarity.
+  let below = 0, counted = 0;
+  for (let i = 0; i < gray.length; i++) {
+    if (plateMask && plateMask[i] !== 1) continue;
+    counted++;
+    if (gray[i] < otsu) below++;
+  }
+  if (counted === 0) counted = gray.length, below = 0; // fallback if mask unavailable
+  const above = counted - below;
+  const darker = below <= above;
+
+  // Pre-pass at this threshold/polarity to see what colony sizes actually look
+  // like on this specific plate, then derive size limits from their median.
+  const rawBlobs = analyzeConnectedComponents(data, w, h, otsu, darker, gray, plateMask)
+    .filter(b => b.area >= 3);
+  let minArea = 15, maxArea = 4000;
+  if (rawBlobs.length >= 3) {
+    const med = medianValue(rawBlobs.map(b => b.area));
+    minArea = Math.round(Math.min(200, Math.max(3, med * 0.18)));
+    maxArea = Math.round(Math.min(20000, Math.max(minArea * 4, med * 7)));
+  }
+
+  coloniesAreDarker = darker;
+  polaritySwitch.classList.toggle('on', !darker);
+  polarityLabel.textContent = darker ? 'Colonies darker than background' : 'Colonies lighter than background';
+
+  threshSlider.value = Math.round(otsu / 255 * 100);
+  threshVal.textContent = threshSlider.value + '%';
+  minAreaSlider.value = Math.max(2, Math.min(200, minArea));
+  minAreaVal.textContent = minAreaSlider.value;
+  maxAreaSlider.value = Math.max(500, Math.min(20000, maxArea));
+  maxAreaVal.textContent = maxAreaSlider.value;
+}
+
+/* --- Morphology feature extraction ---
+   Pure measurement, no genus decision here: color bucket, relative size bucket,
+   and margin (edge) regularity are computed per colony purely from pixel data.
+   classifyArtifacts() below depends on b.colorCat, so this always runs before it.
+   The actual genus call is a separate synchronous scoring-formula pass (see below). --- */
+function computeMorphologyFeatures(blobs) {
+  if (blobs.length === 0) return;
+  const sortedAreas = blobs.map(b => b.area).slice().sort((a, b) => a - b);
+  function sizePercentile(area) {
+    let idx = sortedAreas.findIndex(a => a >= area);
+    if (idx === -1) idx = sortedAreas.length - 1;
+    return idx / Math.max(1, sortedAreas.length - 1);
+  }
+
+  blobs.forEach(b => {
+    const cat = processColorSpectrum(b.avgR, b.avgG, b.avgB);
+    const pct = sizePercentile(b.area);
+    const sizeCat = pct < 0.33 ? 'small' : (pct < 0.66 ? 'medium' : 'large');
+    const boxArea = Math.max(1, (b.maxX - b.minX + 1) * (b.maxY - b.minY + 1));
+    const extent = b.area / boxArea;
+    const marginCat = extent > 0.65 ? 'regular' : 'irregular';
+
+    b.colorCat = cat; b.sizeCat = sizeCat; b.marginCat = marginCat;
+    // Genus is unknown until the scoring-formula pass resolves it.
+    b.taxon = PENDING_TAXA;
+    b.taxonConfidence = 0;
+  });
+}
+
+/* --- Genus/taxonomy classification via fixed scoring formula ---
+   No network call, no vision model: scores each colony's already-measured
+   morphology buckets (colorCat, sizeCat, marginCat from computeMorphologyFeatures)
+   against every entry in TAXONOMY_REGISTRY and picks the best match. This is a
+   first-visual-impression aid only, not a lab result or diagnostic identification —
+   same disclaimer as before, just resolved locally and synchronously now instead
+   of via an external API call. --- */
+function scoreGenusMatch(blob, entry) {
+  let score = 0;
+  if (blob.colorCat === entry.color) score++;
+  if (blob.sizeCat === entry.size) score++;
+  if (blob.marginCat === entry.margin) score++;
+  return score;
+}
+
+function classifyGenusHeuristic(blobs) {
+  const myToken = ++genusClassificationToken;
+  const colonyBlobs = blobs.filter(b => b.artifactType === 'colony');
+  if (colonyBlobs.length === 0) { updateTaxonomyMatrix(); return; }
+
+  genusDot.className = 'dot loading';
+  genusStatus.textContent = 'CLASSIFYING GENUS…';
+
+  colonyBlobs.forEach(b => {
+    let best = null, bestScore = -1, tie = false;
+    TAXONOMY_REGISTRY.forEach(entry => {
+      const s = scoreGenusMatch(b, entry);
+      if (s > bestScore) { bestScore = s; best = entry; tie = false; }
+      else if (s === bestScore && best && entry.name !== best.name) { tie = true; }
+    });
+    // Require at least one matching attribute and an unambiguous winner;
+    // otherwise the morphology is too generic to call.
+    if (!best || bestScore === 0 || tie) {
+      b.taxon = UNMAPPED_TAXA;
+      b.taxonConfidence = 0;
+    } else {
+      b.taxon = best;
+      // 1/3 attributes matched -> ~40%, 2/3 -> ~70%, 3/3 -> 95%.
+      b.taxonConfidence = Math.round([0, 40, 70, 95][bestScore]);
+    }
+  });
+
+  if (myToken !== genusClassificationToken) return; // a newer plate/pass superseded this one
+
+  genusDot.className = 'dot ready';
+  genusStatus.textContent = 'GENUS CLASSIFIER READY';
+
+  renderFrame();
+  autoLookupDominantGenus(myToken);
+}
+
+// Auto-fires the external reference lookup for whichever resolved genus is
+// most populous on the plate, right after a classification pass completes —
+// so the reference panel is already there instead of waiting on a click.
+// Only runs once per pass (guarded by the classification token) and only
+// for a genus that actually resolved (skips Unresolved/pending/artifacts),
+// so it never fires repeatedly from unrelated re-renders (slider drags,
+// playback frames, etc. don't touch genusClassificationToken).
+async function autoLookupDominantGenus(myToken) {
+  if (myToken !== genusClassificationToken) return;
+
+  const counts = {};
+  catalogedBlobs.forEach((b, i) => {
+    if (algorithmicallyPurgedIndices.has(i)) return;
+    if (b.artifactType !== 'colony') return;
+    const t = b.taxon || UNMAPPED_TAXA;
+    if (t === UNMAPPED_TAXA) return;
+    counts[t.name] = (counts[t.name] || 0) + 1;
+  });
+
+  const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  if (!dominant) return; // nothing resolved this pass — leave it manual
+
+  const name = dominant[0];
+  const block = Array.from(taxonomyContainer.querySelectorAll('.genus-block'))
+    .find(el => el.querySelector('.genus-title')?.textContent === name);
+  const btn = block && block.querySelector('.db-lookup-btn');
+  if (!block || !btn || btn.disabled) return;
+
+  if (myToken !== genusClassificationToken) return; // superseded while we were finding the block
+  runExternalDbLookup(name, btn, block);
+}
+
+/* --- External reference-database lookups (opt-in, per genus block) ---
+   These call public bioinformatics services to pull a taxonomic lineage
+   summary and a general phenotype/culture-description record for a
+   textbook genus name the on-plate model already resolved. This is purely
+   reference lookup (what a species generally is / how it's classified),
+   not diagnostic and not tied to any specific colony's identity. Results
+   are cached per name so repeat clicks don't refetch. */
+const BioDatabasePipeline = {
+  _cache: new Map(),
+
+  // National Center for Biotechnology Information (NCBI) Taxonomy API —
+  // resolves a name to a taxonomy ID and returns its lineage/rank summary.
+  async fetchNCBITaxonomy(speciesName) {
+    try {
+      const url = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=taxonomy&term=${encodeURIComponent(speciesName)}&retmode=json`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('esearch ' + response.status);
+      const data = await response.json();
+
+      const taxId = data.esearchresult && data.esearchresult.idlist && data.esearchresult.idlist[0];
+      if (!taxId) return null;
+
+      const summaryUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=taxonomy&id=${taxId}&retmode=json`;
+      const summaryResp = await fetch(summaryUrl);
+      if (!summaryResp.ok) throw new Error('esummary ' + summaryResp.status);
+      const summaryData = await summaryResp.json();
+      return (summaryData.result && summaryData.result[taxId]) || null;
+    } catch (err) {
+      console.error('NCBI taxonomy lookup failed:', err);
+      return null;
+    }
+  },
+
+  // General phenotype/culture-description reference (via a public CORS
+  // proxy, since the browser can't call most institutional APIs directly
+  // from a static page). Best-effort: any failure just yields "unavailable"
+  // in the UI rather than blocking the rest of the lookup.
+  async fetchPhenotypeData(speciesName) {
+    const proxy = 'https://api.allorigins.win/get?url=';
+    const targetUrl = `https://bacdive.dsmz.de/api/v1/species/name/${encodeURIComponent(speciesName)}`;
+
+    try {
+      const response = await fetch(proxy + encodeURIComponent(targetUrl));
+      if (!response.ok) throw new Error('proxy ' + response.status);
+      const rawData = await response.json();
+      const bioData = JSON.parse(rawData.contents);
+      return (bioData && bioData.results && bioData.results[0]) || null;
+    } catch (err) {
+      console.error('Phenotype registry lookup failed:', err);
+      return null;
+    }
+  },
+
+  // Fetches both records for a genus name in parallel and caches the
+  // combined result so a genus block only ever hits the network once.
+  async lookup(genusName) {
+    if (this._cache.has(genusName)) return this._cache.get(genusName);
+    const [taxonomy, phenotype] = await Promise.all([
+      this.fetchNCBITaxonomy(genusName),
+      this.fetchPhenotypeData(genusName)
+    ]);
+    const result = { taxonomy, phenotype };
+    this._cache.set(genusName, result);
+    return result;
+  }
+};
+
+// Triggered by the "Lookup reference data" button on a resolved genus
+// block. Fetches taxonomy + phenotype reference records and renders a
+// small read-only panel underneath that block.
+async function runExternalDbLookup(genusName, btn, block) {
+  btn.disabled = true;
+  btn.textContent = 'Looking up…';
+
+  const panel = document.createElement('div');
+  panel.className = 'db-lookup-panel';
+  panel.innerHTML = '<div class="db-lookup-title">External reference lookup</div>Contacting NCBI Taxonomy &amp; phenotype registry…';
+  block.appendChild(panel);
+
+  try {
+    const { taxonomy, phenotype } = await BioDatabasePipeline.lookup(genusName);
+    const rows = [];
+
+    if (taxonomy) {
+      const rank = taxonomy.rank ? taxonomy.rank : 'n/a';
+      const lineage = taxonomy.lineage ? String(taxonomy.lineage).split(';').slice(-3).join(' → ') : 'n/a';
+      rows.push(`<div class="db-lookup-row"><b>NCBI rank:</b> ${rank}</div>`);
+      rows.push(`<div class="db-lookup-row"><b>Lineage (tail):</b> ${lineage}</div>`);
+    } else {
+      rows.push(`<div class="db-lookup-row">NCBI Taxonomy: no match / unavailable</div>`);
+    }
+
+    if (phenotype) {
+      const summary = phenotype.description || phenotype.morphology || 'record found, no summary field';
+      rows.push(`<div class="db-lookup-row"><b>Phenotype registry:</b> ${summary}</div>`);
+    } else {
+      rows.push(`<div class="db-lookup-row">Phenotype registry: no match / unavailable</div>`);
+    }
+
+    panel.innerHTML = '<div class="db-lookup-title">External reference lookup</div>' + rows.join('');
+    btn.textContent = 'Reference data loaded';
+  } catch (err) {
+    console.error('External DB lookup failed:', err);
+    panel.innerHTML = '<div class="db-lookup-title">External reference lookup</div>Lookup failed — services may be unreachable from this network.';
+    btn.disabled = false;
+    btn.textContent = 'Retry lookup';
+  }
+}
+
+/* --- Contamination / air-bubble artifact screening ---
+   Heuristic pattern screen, NOT a diagnostic test: flags detections that are
+   more likely an optical artifact (an air bubble trapped under the lid) or
+   contamination (fungal/mold overgrowth) than a true bacterial colony, using
+   three signals a trained eye also relies on for a first-pass read:
+     - Shape regularity (extent) — how close to a clean circle.
+     - Interior texture (std-dev of local brightness) — smooth vs. fuzzy/noisy.
+     - Center-vs-rim brightness delta — a glare/halo signature typical of a
+       refractive bubble is very different from a matte colony surface.
+   Always confirm visually — this is a screening aid, not a lab result. */
+function classifyArtifacts(blobs, correctedGray, w, h) {
+  blobs.forEach(b => {
+    const x0 = b.minX, y0 = b.minY, x1 = b.maxX, y1 = b.maxY;
+    let sum = 0, sumSq = 0, n = 0;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const v = correctedGray[y * w + x];
+        sum += v; sumSq += v * v; n++;
+      }
+    }
+    const mean = n ? sum / n : 0;
+    const variance = Math.max(0, (n ? sumSq / n : 0) - mean * mean);
+    const textureStd = Math.sqrt(variance);
+
+    const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+    const cx = Math.min(w - 1, Math.max(0, Math.round(b.cx)));
+    const cy = Math.min(h - 1, Math.max(0, Math.round(b.cy)));
+    const ringR = Math.max(1, Math.round(Math.min(bw, bh) / 2 * 0.75));
+    const coreSample = correctedGray[cy * w + cx];
+    let ringSum = 0;
+    const ringSamples = 10;
+    for (let i = 0; i < ringSamples; i++) {
+      const ang = (i / ringSamples) * Math.PI * 2;
+      const sx = Math.min(w - 1, Math.max(0, Math.round(cx + Math.cos(ang) * ringR)));
+      const sy = Math.min(h - 1, Math.max(0, Math.round(cy + Math.sin(ang) * ringR)));
+      ringSum += correctedGray[sy * w + sx];
+    }
+    const ringMean = ringSum / ringSamples;
+    const specularDelta = Math.abs(coreSample - ringMean);
+
+    const isVeryRound = b.extent > 0.87;
+    const isSmoothInterior = textureStd < 14;
+    const hasGlareSignature = specularDelta > 18;
+
+    const isFuzzyIrregular = b.extent < 0.42;
+    const isNoisyInterior = textureStd > 32;
+    const isMoldColor = b.colorCat === 'green_grey' || b.colorCat === 'other';
+
+    if (isVeryRound && isSmoothInterior && hasGlareSignature) {
+      b.artifactType = 'bubble';
+      b.artifactConfidence = Math.round(Math.min(100, ((b.extent - 0.7) / 0.3) * 50 + Math.min(50, specularDelta)));
+    } else if ((isFuzzyIrregular && isMoldColor) || (isNoisyInterior && isMoldColor)) {
+      b.artifactType = 'contaminant';
+      b.artifactConfidence = Math.round(Math.min(100, (textureStd / 40) * 50 + (isFuzzyIrregular ? 50 : 25)));
+    } else {
+      b.artifactType = 'colony';
+      b.artifactConfidence = Math.max(0, 100 - Math.round(Math.min(40, textureStd)));
+    }
+  });
+}
+
+/* --- Petri dish boundary detection ---
+   "Edge Vector Isolation" is supposed to ignore dish-rim collisions, but
+   checking whether a blob touches the *canvas* border does nothing when the
+   dish is photographed with background margin around it (exactly the
+   scattered false-positive rings seen along/outside the rim). This locates
+   the dish's actual circular edge so blobs can be tested against the real
+   boundary instead.
+
+   Method: 1) estimate background brightness from the four image corners,
+   2) take the largest region that deviates from that background as a coarse
+   dish estimate, 3) refine it with a radial gradient search (find the
+   strongest brightness transition near the coarse radius, for many angles
+   around the center), 4) reject outlier rays (a colony or glare sitting on
+   a given ray) via median-absolute-deviation, 5) fit a proper circle (Kása
+   algebraic fit) through the surviving edge points. */
+function findLargestMaskComponent(mask, w, h) {
+  const visited = new Uint8Array(w * h);
+  const stack = new Int32Array(w * h);
+  let best = null;
+  for (let start = 0; start < w * h; start++) {
+    if (mask[start] !== 1 || visited[start]) continue;
+    let sp = 0;
+    stack[sp++] = start; visited[start] = 1;
+    let area = 0, sx = 0, sy = 0;
+    let minX = w, maxX = -1, minY = h, maxY = -1;
+    while (sp > 0) {
+      const idx = stack[--sp];
+      const y = (idx / w) | 0, x = idx - y * w;
+      area++; sx += x; sy += y;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const nIdx = ny * w + nx;
+          if (mask[nIdx] === 1 && !visited[nIdx]) { visited[nIdx] = 1; stack[sp++] = nIdx; }
+        }
+      }
+    }
+    if (!best || area > best.area) best = { area, cx: sx / area, cy: sy / area, minX, maxX, minY, maxY };
+  }
+  return best;
+}
+
+function detectPlateBoundary(correctedGray, w, h) {
+  // 1. Background estimate from the four corners (median of the 4, so one
+  //    corner accidentally clipping the dish doesn't skew it).
+  const patch = Math.max(4, Math.round(Math.min(w, h) * 0.06));
+  const corners = [[0, 0], [w - patch, 0], [0, h - patch], [w - patch, h - patch]];
+  const cornerMeans = corners.map(([cx0, cy0]) => {
+    let sum = 0, n = 0;
+    for (let y = cy0; y < cy0 + patch; y++) {
+      for (let x = cx0; x < cx0 + patch; x++) { sum += correctedGray[y * w + x]; n++; }
+    }
+    return sum / n;
+  }).sort((a, b) => a - b);
+  const backgroundLevel = (cornerMeans[1] + cornerMeans[2]) / 2;
+
+  // 2. Coarse dish region = largest connected area that deviates from background.
+  const dev = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) dev[i] = Math.min(255, Math.abs(correctedGray[i] - backgroundLevel));
+  const devThreshold = Math.max(10, evaluateOtsuSegmentation(dev, w, h) * 0.5);
+  const mask = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) mask[i] = dev[i] > devThreshold ? 1 : 0;
+
+  const largest = findLargestMaskComponent(mask, w, h);
+  const DEFAULT_FALLBACK = { cx: w / 2, cy: h / 2, r: Math.min(w, h) / 2 - 4, confidence: 0.3 };
+
+  // No confident region found at all (near-uniform image) — assume the dish
+  // roughly fills the frame, which is how these photos are usually cropped,
+  // rather than skipping rim filtering entirely.
+  if (!largest || largest.area < w * h * 0.05) return DEFAULT_FALLBACK;
+
+  // The opposite failure, and the one actually biting on cluttered/uneven
+  // backgrounds: the "deviates from background" mask swallows the busy
+  // background *along with* the dish into one giant connected blob, so the
+  // coarse region ends up covering almost the whole frame. Left alone, that
+  // inflates radiusEstimate way past the real dish edge and rim filtering
+  // then does nothing — which is exactly what let the background clutter
+  // through as false colony rings. Detect that and fall back too, rather
+  // than trusting an implausibly frame-filling "dish".
+  if (largest.area > w * h * 0.92) return DEFAULT_FALLBACK;
+
+  const cx = largest.cx, cy = largest.cy;
+  const boundingRadius = Math.max(largest.maxX - largest.minX, largest.maxY - largest.minY) / 2;
+  const areaRadius = Math.sqrt(largest.area / Math.PI);
+  // Also cap the coarse estimate itself — a real dish photo is essentially
+  // never framed so tight that the dish extends past ~1.1x the half-width/
+  // height of the shot, so a bigger estimate is a sign the mask merged in
+  // surrounding clutter rather than a sign of a genuinely huge dish.
+  const radiusEstimate = Math.min((boundingRadius + areaRadius) / 2, Math.min(w, h) * 0.55);
+
+  // 3. Radial edge refinement: for many angles, find the strongest local
+  //    brightness transition near the coarse radius.
+  const RAYS = 180;
+  const searchBand = Math.max(6, radiusEstimate * 0.35);
+  const maxPossibleR = Math.hypot(w, h) / 2;
+  const edgePoints = [];
+  for (let k = 0; k < RAYS; k++) {
+    const ang = (k / RAYS) * Math.PI * 2;
+    const dx = Math.cos(ang), dy = Math.sin(ang);
+    const rStart = Math.max(2, radiusEstimate - searchBand);
+    const rEnd = Math.min(maxPossibleR - 2, radiusEstimate + searchBand);
+    let bestGrad = -1, bestR = -1;
+    for (let r = rStart; r <= rEnd; r += 1) {
+      const xm = Math.round(cx + dx * (r - 1)), ym = Math.round(cy + dy * (r - 1));
+      const xp = Math.round(cx + dx * (r + 1)), yp = Math.round(cy + dy * (r + 1));
+      if (xm < 0 || ym < 0 || xp < 0 || yp < 0 || xm >= w || ym >= h || xp >= w || yp >= h) continue;
+      const grad = Math.abs(correctedGray[yp * w + xp] - correctedGray[ym * w + xm]);
+      if (grad > bestGrad) { bestGrad = grad; bestR = r; }
+    }
+    if (bestR > 0 && bestGrad > 6) edgePoints.push({ x: cx + dx * bestR, y: cy + dy * bestR, r: bestR });
+  }
+  if (edgePoints.length < RAYS * 0.3) return { cx, cy, r: radiusEstimate, confidence: 0.4 };
+
+  // 4. Reject outlier rays via median-absolute-deviation on the found radius.
+  const radii = edgePoints.map(p => p.r);
+  const medR = medianValue(radii);
+  const mad = medianValue(radii.map(r => Math.abs(r - medR))) || 1;
+  const inliers = edgePoints.filter(p => Math.abs(p.r - medR) <= Math.max(3, mad * 3));
+  if (inliers.length < 8) return { cx, cy, r: radiusEstimate, confidence: 0.4 };
+
+  // 5. Kása algebraic circle fit through the surviving edge points.
+  let sumX = 0, sumY = 0;
+  inliers.forEach(p => { sumX += p.x; sumY += p.y; });
+  const meanX = sumX / inliers.length, meanY = sumY / inliers.length;
+  let Suu = 0, Svv = 0, Suv = 0, Suuu = 0, Svvv = 0, Suvv = 0, Svuu = 0;
+  inliers.forEach(p => {
+    const u = p.x - meanX, v = p.y - meanY;
+    Suu += u * u; Svv += v * v; Suv += u * v;
+    Suuu += u * u * u; Svvv += v * v * v; Suvv += u * v * v; Svuu += v * u * u;
+  });
+  const detM = Suu * Svv - Suv * Suv;
+  let refinedCx = meanX, refinedCy = meanY;
+  if (Math.abs(detM) > 1e-6) {
+    const E = 0.5 * (Suuu + Suvv), F = 0.5 * (Svvv + Svuu);
+    refinedCx = meanX + (E * Svv - Suv * F) / detM;
+    refinedCy = meanY + (Suu * F - Suv * E) / detM;
+  }
+  const refinedR = medianValue(inliers.map(p => Math.hypot(p.x - refinedCx, p.y - refinedCy)));
+
+  return { cx: refinedCx, cy: refinedCy, r: refinedR, confidence: inliers.length / RAYS };
+}
+
+/* Rasterizes the detected dish circle into a per-pixel mask (1 = inside the
+   plate, usable for analysis; 0 = background/rim to ignore). Used to keep
+   Otsu thresholding, polarity detection, and blob search from ever looking
+   at whatever is sitting outside the dish in the photo. */
+function buildPlateMask(geom, w, h) {
+  const mask = new Uint8Array(w * h);
+  if (!geom) { mask.fill(1); return mask; } // no confident boundary — analyze whole frame
+  const rimMargin = Math.max(3, geom.r * 0.035);
+  const rIn = Math.max(1, geom.r - rimMargin);
+  const rIn2 = rIn * rIn;
+  const minY = Math.max(0, Math.floor(geom.cy - rIn)), maxY = Math.min(h - 1, Math.ceil(geom.cy + rIn));
+  const minX = Math.max(0, Math.floor(geom.cx - rIn)), maxX = Math.min(w - 1, Math.ceil(geom.cx + rIn));
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const dx = x - geom.cx, dy = y - geom.cy;
+      if (dx * dx + dy * dy <= rIn2) mask[y * w + x] = 1;
+    }
+  }
+  return mask;
+}
+
+/* --- Core analysis pass: auto-tune + threshold + connected components --- */
+function executeComputerVisionPass(withSweep) {
+  if (withSweep === undefined) withSweep = true;
+  stopPlayback();
+  const w = baselineImageBuffer.width, h = baselineImageBuffer.height;
+  const data = baselineImageBuffer.data;
+  const correctedGray = computeIlluminationCorrectedGray(data, w, h);
+
+  // Detect the dish boundary FIRST so thresholding/polarity/blob search can
+  // be restricted to what's actually inside the plate, rather than being
+  // skewed by whatever background surrounds it in the photo.
+  detectedPlateGeometry = detectPlateBoundary(correctedGray, w, h);
+  const plateMask = buildPlateMask(
+    (detectedPlateGeometry && detectedPlateGeometry.confidence >= 0.3) ? detectedPlateGeometry : null,
+    w, h
+  );
+
+  if (systemAutoTune) {
+    autoTuneParameters(baselineImageBuffer, correctedGray, plateMask);
+  }
+
+  const threshold = Math.round(parseInt(threshSlider.value) / 100 * 255);
+  const minArea = parseInt(minAreaSlider.value);
+  const maxArea = parseInt(maxAreaSlider.value);
+  const IDEAL_EXTENT = 0.785; // area/bbox-area ratio of a perfect circle
+
+  let blobs = analyzeConnectedComponents(data, w, h, threshold, coloniesAreDarker, correctedGray, plateMask)
+    .filter(b => b.area >= minArea && b.area <= maxArea);
+
+  if (excludeRimEdges) {
+    // Still guard against anything touching the raw canvas frame...
+    blobs = blobs.filter(b => b.minX > 0 && b.minY > 0 && b.maxX < w - 1 && b.maxY < h - 1);
+    // ...but the real fix: test against the dish's actual detected circular
+    // boundary, so rim glare/dust/background texture outside the plate gets
+    // dropped even when it never touches the canvas edge at all.
+    if (detectedPlateGeometry && detectedPlateGeometry.confidence >= 0.3) {
+      const g = detectedPlateGeometry;
+      const rimMargin = Math.max(3, g.r * 0.035); // also shave a thin band just inside the rim itself
+      blobs = blobs.filter(b => Math.hypot(b.cx - g.cx, b.cy - g.cy) <= g.r - rimMargin);
+    }
+  }
+
+  // Plate's true overall brightness (attached by computeIlluminationCorrectedGray),
+  // used below so contrast is judged against this specific plate/photo rather
+  // than an assumed fixed brightness level.
+  const plateGlobalMean = correctedGray.globalMean != null ? correctedGray.globalMean : 128;
+  const CONTRAST_FULL_SCALE = 45; // gray-level gap that counts as a fully confident, unambiguous detection
+
+  blobs.forEach(b => {
+    const boxArea = Math.max(1, (b.maxX - b.minX + 1) * (b.maxY - b.minY + 1));
+    b.extent = b.area / boxArea;
+    const shapeScore = Math.max(0, Math.min(1, b.extent / IDEAL_EXTENT));
+
+    const blobLuma = 0.299 * b.avgR + 0.587 * b.avgG + 0.114 * b.avgB;
+    const contrastScore = Math.max(0, Math.min(1, Math.abs(blobLuma - plateGlobalMean) / CONTRAST_FULL_SCALE));
+
+    // Shape carries slightly more weight (it's the more reliable of the two
+    // signals for actual colonies), but a round glare artifact with near-zero
+    // contrast against the plate no longer scores as confidently as a real,
+    // clearly-differentiated colony of similar shape.
+    b.confidence = Math.round((0.6 * shapeScore + 0.4 * contrastScore) * 100);
+  });
+
+  if (filterDeformedShapes) {
+    blobs = blobs.filter(b => b.extent > 0.35);
+  }
+
+  computeMorphologyFeatures(blobs);
+  classifyArtifacts(blobs, correctedGray, w, h);
+  catalogedBlobs = blobs;
+  algorithmicallyPurgedIndices = new Set();
+  undoCleanupBtn.style.display = 'none';
+  playbackScrubber.value = 0;
+  precomputeSyntheticColonySlots();
+
+  if (withSweep) runRadarSweep();
+  else renderFrame();
+
+  // Genus assignment runs synchronously via the local scoring formula against
+  // TAXONOMY_REGISTRY — no network round-trip, no external API dependency.
+  classifyGenusHeuristic(blobs);
+}
+
+/* --- Shared artifact styling: colonies (solid), contaminants (dashed pink),
+   air bubbles (dotted teal) — used by both the live overlay and the radar sweep. --- */
+function artifactStrokeColor(b) {
+  if (b.artifactType === 'contaminant') return varCSS('--neon-pink');
+  if (b.artifactType === 'bubble') return '#4fd1ff';
+  return (b.taxon && b.taxon.swatch) ? resolveSwatch(b.taxon.swatch) : varCSS('--neon-cyan');
+}
+function applyArtifactDash(b) {
+  if (b.artifactType === 'contaminant') ctx.setLineDash([5, 3]);
+  else if (b.artifactType === 'bubble') ctx.setLineDash([1.5, 3]);
+  else ctx.setLineDash([]);
+}
+
+/* --- Fast repaint: base image + detection overlays + HUD counters only.
+   Used every animation frame during particle bursts / radar sweeps so we never
+   touch Chart.js (expensive) more than once per real analysis pass. --- */
+function paintDetections() {
+  ctx.drawImage(baseImageCanvas, 0, 0);
+  ctx.lineWidth = 2;
+
+  // Faint reference ring showing the detected dish boundary that
+  // Edge Vector Isolation is actually filtering against.
+  if (detectedPlateGeometry && excludeRimEdges) {
+    ctx.save();
+    ctx.setLineDash([6, 4]);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255, 170, 0, 0.5)';
+    ctx.beginPath();
+    ctx.arc(detectedPlateGeometry.cx, detectedPlateGeometry.cy, detectedPlateGeometry.r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    ctx.lineWidth = 2;
+  }
+
+  let visibleCount = 0, totalRadius = 0, totalConfidence = 0;
+  let contamCount = 0, bubbleCount = 0;
+  catalogedBlobs.forEach((b, i) => {
+    if (algorithmicallyPurgedIndices.has(i)) return;
+    visibleCount++;
+    const r = Math.max((b.maxX - b.minX), (b.maxY - b.minY)) / 2 + 2;
+    totalRadius += r;
+    totalConfidence += (b.confidence || 0);
+    if (b.artifactType === 'contaminant') contamCount++;
+    else if (b.artifactType === 'bubble') bubbleCount++;
+
+    ctx.strokeStyle = artifactStrokeColor(b);
+    applyArtifactDash(b);
+    ctx.beginPath();
+    ctx.arc(b.cx, b.cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+  ctx.setLineDash([]);
+
+  hudCount.textContent = visibleCount;
+  hudDensity.textContent = visibleCount ? (totalRadius / visibleCount).toFixed(1) : '0.0';
+  hudShape.textContent = visibleCount ? Math.round(totalConfidence / visibleCount) + '%' : '0%';
+
+  const contamPct = visibleCount ? Math.round((contamCount / visibleCount) * 100) : 0;
+  const bubblePct = visibleCount ? Math.round((bubbleCount / visibleCount) * 100) : 0;
+  const cleanPct = Math.max(0, 100 - contamPct - bubblePct);
+  hudContamPct.textContent = contamPct + '%';
+  hudBubblePct.textContent = bubblePct + '%';
+  hudCleanPct.textContent = cleanPct + '%';
+
+  return { visibleCount, contamCount, bubbleCount, contamPct, bubblePct, cleanPct };
+}
+
+/* --- Full render pass: overlay + HUD stats + taxonomy matrix + all charts/gauges --- */
+function renderFrame() {
+  paintDetections();
+  updateTaxonomyMatrix();
+  refreshProfilingGraphs(catalogedBlobs);
+  updateSizeHistogram(catalogedBlobs);
+  updateGrowthPrediction();
+  updatePlateHealthGauge();
+}
+
+/* --- Radar sweep scan animation: a rotating scan-line sweeps out from the
+   plate center on load/reanalysis, and each detection "pings" into existence
+   the moment the sweep line passes its angular position. Finishes into the
+   normal full renderFrame(). --- */
+function runRadarSweep() {
+  if (!baselineImageBuffer) { renderFrame(); return; }
+  scanIndicator.classList.add('active');
+
+  const w = baselineImageBuffer.width, h = baselineImageBuffer.height;
+  const centerX = w / 2, centerY = h / 2;
+  const maxR = Math.hypot(w, h) / 2 + 10;
+
+  const sweepTargets = catalogedBlobs.map((b, i) => ({ b, i })).filter(o => !algorithmicallyPurgedIndices.has(o.i));
+  sweepTargets.forEach(o => {
+    let ang = Math.atan2(o.b.cy - centerY, o.b.cx - centerX);
+    if (ang < 0) ang += Math.PI * 2;
+    o.angle = ang; o.pinged = false; o.pingTime = 0;
+  });
+
+  const duration = 1500;
+  const start = performance.now();
+
+  function frame(now) {
+    const elapsed = now - start;
+    const t = Math.min(1, elapsed / duration);
+    const sweepAngle = t * Math.PI * 2;
+
+    ctx.drawImage(baseImageCanvas, 0, 0);
+
+    // radar cone trailing the sweep line
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(sweepAngle);
+    const coneGrad = ctx.createLinearGradient(0, 0, maxR, 0);
+    coneGrad.addColorStop(0, 'rgba(57,255,20,0.30)');
+    coneGrad.addColorStop(1, 'rgba(57,255,20,0)');
+    ctx.fillStyle = coneGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, maxR, -0.45, 0.02);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(57,255,20,0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(maxR, 0); ctx.stroke();
+    ctx.restore();
+
+    // ping detections the instant the sweep line passes their angle
+    sweepTargets.forEach(o => {
+      let angDiff = sweepAngle - o.angle;
+      while (angDiff < 0) angDiff += Math.PI * 2;
+      if (angDiff < 0.12 && !o.pinged) { o.pinged = true; o.pingTime = elapsed; }
+      if (!o.pinged) return;
+
+      const r = Math.max((o.b.maxX - o.b.minX), (o.b.maxY - o.b.minY)) / 2 + 2;
+      const age = elapsed - o.pingTime;
+      const pingProgress = Math.min(1, age / 450);
+
+      ctx.save();
+      ctx.strokeStyle = artifactStrokeColor(o.b);
+      applyArtifactDash(o.b);
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(o.b.cx, o.b.cy, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      if (pingProgress < 1) {
+        ctx.globalAlpha = 1 - pingProgress;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(o.b.cx, o.b.cy, r + pingProgress * 14, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+    });
+
+    if (t < 1) {
+      requestAnimationFrame(frame);
+    } else {
+      scanIndicator.classList.remove('active');
+      renderFrame();
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+/* --- Taxonomy breakdown panel, including antibiotic reference lookup --- */
+function updateTaxonomyMatrix() {
+  const counts = {};
+  catalogedBlobs.forEach((b, i) => {
+    if (algorithmicallyPurgedIndices.has(i)) return;
+    let name, swatch, isSpecial = false;
+    if (b.artifactType === 'contaminant') { name = 'Suspected Contaminant'; swatch = 'var(--neon-pink)'; isSpecial = true; }
+    else if (b.artifactType === 'bubble') { name = 'Air Bubble (Artifact)'; swatch = '#4fd1ff'; isSpecial = true; }
+    else { const t = b.taxon || UNMAPPED_TAXA; name = t.name; swatch = t.swatch; }
+
+    if (!counts[name]) counts[name] = { count: 0, swatch, confSum: 0, isSpecial };
+    counts[name].count++;
+    counts[name].confSum += isSpecial ? (b.artifactConfidence || 0) : (b.taxonConfidence || 0);
+  });
+
+  const entries = Object.entries(counts).sort((a, b) => b[1].count - a[1].count);
+  const maxCount = entries.length ? entries[0][1].count : 0;
+  taxonomyContainer.innerHTML = '';
+  taxonomyEmpty.style.display = entries.length ? 'none' : 'block';
+
+  entries.forEach(([name, info]) => {
+    const avgConf = Math.round(info.confSum / info.count);
+    const resolved = resolveSwatch(info.swatch);
+    const block = document.createElement('div');
+    block.className = 'genus-block';
+
+    const isUnresolved = name === UNMAPPED_TAXA.name;
+    const isPending = name === PENDING_TAXA.name;
+    const dataLabel = isPending ? 'classifying…' : (isUnresolved ? '–' : (avgConf + (info.isSpecial ? '% confidence' : '% match')));
+
+    const row = document.createElement('div');
+    row.className = 'genus-row';
+    row.innerHTML = `
+      <div class="genus-bg-progress" style="width:${maxCount ? Math.round((info.count / maxCount) * 100) : 0}%; background:${resolved};"></div>
+      <div class="genus-meta">
+        <div class="genus-indicator" style="background:${resolved};"></div>
+        <div class="genus-title">${name}</div>
+      </div>
+      <div class="genus-data">${info.count} · ${dataLabel}</div>
+    `;
+    block.appendChild(row);
+
+    const abx = ANTIBIOTIC_DB[name];
+    if (abx) {
+      const abxDiv = document.createElement('div');
+      abxDiv.className = 'abx-list';
+      abxDiv.innerHTML = `<div class="abx-title">Commonly cited antibiotics</div>${abx.join(' · ')}`;
+      block.appendChild(abxDiv);
+    }
+
+    // Optional external reference lookup — only for resolved, non-special
+    // (contaminant/bubble) genus calls, since those aren't real taxa.
+    if (!info.isSpecial && !isUnresolved && !isPending) {
+      const lookupBtn = document.createElement('button');
+      lookupBtn.className = 'db-lookup-btn';
+      lookupBtn.textContent = 'Lookup reference data';
+      lookupBtn.addEventListener('click', () => runExternalDbLookup(name, lookupBtn, block));
+      block.appendChild(lookupBtn);
+    }
+
+    taxonomyContainer.appendChild(block);
+  });
+
+  if (entries.some(([name]) => ANTIBIOTIC_DB[name])) {
+    const note = document.createElement('div');
+    note.className = 'abx-disclaimer';
+    note.innerHTML = 'Antibiotics listed are generic textbook reference options per genus, not a treatment recommendation. Real antibiotic choice always requires a lab culture &amp; sensitivity test and a clinician — not colony appearance alone.';
+    taxonomyContainer.appendChild(note);
+  }
+}
+
+/* --- Control bindings: auto-tune toggle, polarity, sliders, filters --- */
+autoSwitch.addEventListener('click', () => {
+  systemAutoTune = !systemAutoTune;
+  autoSwitch.classList.toggle('on', systemAutoTune);
+  hideRows.forEach(el => el.classList.toggle('disabled-mask', systemAutoTune));
+  if (baselineImageBuffer) executeComputerVisionPass();
+});
+// reflect initial "on" state set in HTML
+hideRows.forEach(el => el.classList.toggle('disabled-mask', systemAutoTune));
+
+polaritySwitch.addEventListener('click', () => {
+  coloniesAreDarker = !coloniesAreDarker;
+  polaritySwitch.classList.toggle('on', !coloniesAreDarker);
+  polarityLabel.textContent = coloniesAreDarker ? 'Colonies darker than background' : 'Colonies lighter than background';
+  if (baselineImageBuffer) executeComputerVisionPass();
+});
+
+threshSlider.addEventListener('input', () => {
+  threshVal.textContent = threshSlider.value + '%';
+  if (baselineImageBuffer) executeComputerVisionPass(false);
+});
+minAreaSlider.addEventListener('input', () => {
+  minAreaVal.textContent = minAreaSlider.value;
+  if (baselineImageBuffer) executeComputerVisionPass(false);
+});
+maxAreaSlider.addEventListener('input', () => {
+  maxAreaVal.textContent = maxAreaSlider.value;
+  if (baselineImageBuffer) executeComputerVisionPass(false);
+});
+
+edgeSwitch.addEventListener('click', () => {
+  excludeRimEdges = !excludeRimEdges;
+  edgeSwitch.classList.toggle('on', excludeRimEdges);
+  if (baselineImageBuffer) executeComputerVisionPass();
+});
+
+shapeSwitch.addEventListener('click', () => {
+  filterDeformedShapes = !filterDeformedShapes;
+  shapeSwitch.classList.toggle('on', filterDeformedShapes);
+  if (baselineImageBuffer) executeComputerVisionPass();
+});
+
+/* --- AI Cluster Cleanup: MobileNet embedding similarity --- */
+aiCleanupBtn.addEventListener('click', () => {
+  clusterCleanupActive = !clusterCleanupActive;
+  cleanupNotice.classList.toggle('active', clusterCleanupActive);
+  mainCanvas.classList.toggle('cleanup-mode', clusterCleanupActive);
+  aiCleanupBtn.innerHTML = clusterCleanupActive ? '🧠 Exit Cluster Cleanup' : '🧠 AI Cluster Cleanup';
+});
+
+undoCleanupBtn.addEventListener('click', () => {
+  algorithmicallyPurgedIndices = new Set();
+  undoCleanupBtn.style.display = 'none';
+  renderFrame();
+});
+
+// Extracts a small padded patch around a blob as its own canvas, suitable
+// for feeding into MobileNet to get a visual embedding.
+function extractStructuralPatch(b) {
+  const pad = 6;
+  const x0 = Math.max(0, b.minX - pad);
+  const y0 = Math.max(0, b.minY - pad);
+  const x1 = Math.min(baselineImageBuffer.width, b.maxX + pad);
+  const y1 = Math.min(baselineImageBuffer.height, b.maxY + pad);
+  const pw = Math.max(1, x1 - x0), ph = Math.max(1, y1 - y0);
+
+  const patchCanvas = document.createElement('canvas');
+  // Upscale tiny patches so MobileNet has enough pixels to work with
+  const scale = pw < 32 || ph < 32 ? 4 : 1;
+  patchCanvas.width = pw * scale;
+  patchCanvas.height = ph * scale;
+  const patchCtx = patchCanvas.getContext('2d');
+  patchCtx.imageSmoothingEnabled = true;
+  patchCtx.drawImage(mainCanvas, x0, y0, pw, ph, 0, 0, pw * scale, ph * scale);
+  return patchCanvas;
+}
+
+function computeEmbedding(patchCanvas) {
+  return tf.tidy(() => mobilenetEngine.infer(patchCanvas, true));
+}
+
+function cosineSimilarity(a, b) {
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  return dot / (Math.sqrt(na) * Math.sqrt(nb) + 1e-8);
+}
+
+mainCanvas.addEventListener('click', async (e) => {
+  if (!clusterCleanupActive || !mobilenetEngine || !baselineImageBuffer) return;
+
+  const rect = mainCanvas.getBoundingClientRect();
+  const scaleX = mainCanvas.width / rect.width;
+  const scaleY = mainCanvas.height / rect.height;
+  const clickX = (e.clientX - rect.left) * scaleX;
+  const clickY = (e.clientY - rect.top) * scaleY;
+
+  // find nearest visible blob to the click
+  let bestIdx = -1, bestDist = Infinity;
+  catalogedBlobs.forEach((b, i) => {
+    if (algorithmicallyPurgedIndices.has(i)) return;
+    const r = Math.max((b.maxX - b.minX), (b.maxY - b.minY)) / 2 + 4;
+    const d = Math.hypot(b.cx - clickX, b.cy - clickY);
+    if (d <= r && d < bestDist) { bestDist = d; bestIdx = i; }
+  });
+  if (bestIdx === -1) return;
+
+  const originalStatus = netStatus.textContent;
+  netStatus.textContent = 'AI CLEANUP: COMPARING STRUCTURAL SIGNATURES…';
+
+  const markedPatch = extractStructuralPatch(catalogedBlobs[bestIdx]);
+  const markedEmbTensor = computeEmbedding(markedPatch);
+  const markedEmb = await markedEmbTensor.data();
+  markedEmbTensor.dispose();
+
+  const SIMILARITY_THRESHOLD = 0.85;
+  let removedCount = 0;
+  const burstTargets = [];
+
+  for (let i = 0; i < catalogedBlobs.length; i++) {
+    if (algorithmicallyPurgedIndices.has(i)) continue;
+    const patch = extractStructuralPatch(catalogedBlobs[i]);
+    const embTensor = computeEmbedding(patch);
+    const emb = await embTensor.data();
+    embTensor.dispose();
+    const sim = cosineSimilarity(markedEmb, emb);
+    if (sim >= SIMILARITY_THRESHOLD) {
+      algorithmicallyPurgedIndices.add(i);
+      removedCount++;
+      const rb = catalogedBlobs[i];
+      burstTargets.push({
+        cx: rb.cx, cy: rb.cy,
+        r: Math.max((rb.maxX - rb.minX), (rb.maxY - rb.minY)) / 2 + 2,
+        color: artifactStrokeColor(rb)
+      });
+    }
+  }
+
+  netStatus.textContent = `NEURAL CLEANUP ENGINE READY — removed ${removedCount} similar detection${removedCount === 1 ? '' : 's'}.`;
+  undoCleanupBtn.style.display = 'inline-flex';
+  renderFrame();
+  if (burstTargets.length) runCleanupParticleBurst(burstTargets);
+});
+
+/* --- Particle dissolve burst: purged detections scatter into fading fragments
+   instead of just vanishing. Repaints via the lightweight paintDetections()
+   each frame (never Chart.js) so the burst stays smooth. --- */
+function runCleanupParticleBurst(targets) {
+  const duration = 650;
+  const start = performance.now();
+  const particles = [];
+  targets.forEach(p => {
+    const count = 14;
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const speed = 0.5 + Math.random() * 1.6;
+      particles.push({
+        x: p.cx, y: p.cy,
+        vx: Math.cos(ang) * speed * (p.r * 0.9 + 4),
+        vy: Math.sin(ang) * speed * (p.r * 0.9 + 4),
+        r: 1 + Math.random() * 2.4,
+        color: p.color
+      });
+    }
+  });
+
+  function frame(now) {
+    const t = Math.min(1, (now - start) / duration);
+    paintDetections();
+    ctx.save();
+    particles.forEach(pt => {
+      const px = pt.x + pt.vx * t;
+      const py = pt.y + pt.vy * t;
+      ctx.globalAlpha = Math.max(0, 1 - t);
+      ctx.fillStyle = pt.color;
+      ctx.beginPath();
+      ctx.arc(px, py, Math.max(0.2, pt.r * (1 - t * 0.4)), 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+    if (t < 1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* --- Time-Lapse Kinetic Growth Predictor (Simulation Mode) ---
+   Seeds a modeled growth curve from the currently detected colony count
+   (N0) and extrapolates it forward using standard population-growth
+   kinetics. This is a projection, not measured time-lapse imaging — the
+   panel is labeled and disclaimed as such throughout the UI. */
+
+// Estimated max colonies the visible plate area could physically hold,
+// derived from the average footprint of colonies actually detected on it
+// (falls back to a generic mature-colony footprint if none detected yet).
+function estimateCarryingCapacity(blobs, w, h) {
+  const visibleBlobs = blobs.filter((_, i) => !algorithmicallyPurgedIndices.has(i));
+  const usableRadius = Math.min(w, h) / 2;
+  const plateArea = Math.PI * usableRadius * usableRadius;
+  const PACKING_FACTOR = 1.35; // circles never tile perfectly; leaves inter-colony gaps
+  let avgColonyArea = 300;
+  if (visibleBlobs.length > 0) {
+    avgColonyArea = medianValue(visibleBlobs.map(b => b.area)) || avgColonyArea;
+  }
+  const capacity = plateArea / (avgColonyArea * PACKING_FACTOR);
+  return Math.max(visibleBlobs.length + 5, Math.round(capacity));
+}
+
+function growthModelValue(model, N0, K, r, lagHours, t) {
+  const effectiveT = Math.max(0, t - lagHours);
+  if (model === 'exponential') {
+    return Math.min(K, N0 * Math.exp(r * effectiveT));
+  }
+  if (model === 'gompertz') {
+    if (N0 <= 0) return 0;
+    return K * Math.pow(N0 / K, Math.exp(-r * effectiveT));
+  }
+  // logistic (default)
+  const ratio = (K - N0) / N0;
+  return K / (1 + ratio * Math.exp(-r * effectiveT));
+}
+
+function updateGrowthPrediction() {
+  if (!baselineImageBuffer) return;
+
+  const model = growthModelSelect.value;
+  const doublingMinutes = parseFloat(doublingTimeSlider.value);
+  const durationHours = parseFloat(durationSlider.value);
+  const lagHours = parseFloat(lagSlider.value);
+  doublingTimeVal.textContent = doublingMinutes + ' min';
+  durationVal.textContent = durationHours + ' h';
+  lagVal.textContent = lagHours.toFixed(1) + ' h';
+
+  playbackScrubber.max = durationHours;
+  if (parseFloat(playbackScrubber.value) > durationHours) playbackScrubber.value = durationHours;
+
+  const w = baselineImageBuffer.width, h = baselineImageBuffer.height;
+  const N0raw = catalogedBlobs.filter((_, i) => !algorithmicallyPurgedIndices.has(i)).length;
+  const N0 = Math.max(1, N0raw); // model needs a nonzero seed to extrapolate from
+  const K = estimateCarryingCapacity(catalogedBlobs, w, h);
+  const r = Math.log(2) / (doublingMinutes / 60); // per-hour growth rate from doubling time
+
+  const STEPS = 48;
+  const labels = [];
+  const countSeries = [];
+  const confluenceSeries = [];
+  let timeToConfluence = null;
+
+  for (let s = 0; s <= STEPS; s++) {
+    const t = (durationHours / STEPS) * s;
+    const N = Math.min(K, growthModelValue(model, N0, K, r, lagHours, t));
+    labels.push(t.toFixed(1));
+    countSeries.push(Math.round(N));
+    const conf = Math.min(100, (N / K) * 100);
+    confluenceSeries.push(conf);
+    if (timeToConfluence === null && conf >= 95) timeToConfluence = t;
+  }
+
+  const finalCount = countSeries[countSeries.length - 1];
+  const finalConfluence = confluenceSeries[confluenceSeries.length - 1];
+  growthProjCount.textContent = N0raw > 0 ? finalCount.toLocaleString() : '–';
+  growthConfluence.textContent = N0raw > 0 ? Math.round(finalConfluence) + '%' : '–';
+  growthTTC.textContent = N0raw > 0 ? (timeToConfluence !== null ? timeToConfluence.toFixed(1) + ' h' : '> ' + durationHours + ' h') : '–';
+
+  const chartElement = document.getElementById('growthChart').getContext('2d');
+  if (growthChartInstance) {
+    growthChartInstance.data.labels = labels;
+    growthChartInstance.data.datasets[0].data = countSeries;
+    growthChartInstance.data.datasets[1].data = confluenceSeries;
+    growthChartInstance.update();
+    return;
+  }
+  growthChartInstance = new Chart(chartElement, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Projected CFU Count', data: countSeries, yAxisID: 'yCount',
+          borderColor: varCSS('--neon-cyan'), backgroundColor: 'rgba(0, 242, 254, 0.08)',
+          fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2
+        },
+        {
+          label: 'Projected Confluence %', data: confluenceSeries, yAxisID: 'yPct',
+          borderColor: varCSS('--neon-pink'), backgroundColor: 'transparent',
+          borderDash: [4, 3], fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1.5
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, labels: { color: varCSS('--text-dim'), font: { family: varCSS('--mono'), size: 9 }, boxWidth: 10 } }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'Simulated Hours', color: varCSS('--text-dim'), font: { family: varCSS('--mono'), size: 10 } },
+          grid: { color: 'rgba(27, 50, 53, 0.4)' }, ticks: { color: varCSS('--text-dim'), maxTicksLimit: 8 }
+        },
+        yCount: {
+          position: 'left', title: { display: true, text: 'CFU Count', color: varCSS('--text-dim'), font: { family: varCSS('--mono'), size: 10 } },
+          grid: { color: 'rgba(27, 50, 53, 0.4)' }, ticks: { color: varCSS('--text-dim') }, min: 0
+        },
+        yPct: {
+          position: 'right', title: { display: true, text: 'Confluence %', color: varCSS('--text-dim'), font: { family: varCSS('--mono'), size: 10 } },
+          grid: { display: false }, ticks: { color: varCSS('--text-dim') }, min: 0, max: 100
+        }
+      }
+    }
+  });
+}
+
+growthModelSelect.addEventListener('change', updateGrowthPrediction);
+doublingTimeSlider.addEventListener('input', updateGrowthPrediction);
+durationSlider.addEventListener('input', updateGrowthPrediction);
+lagSlider.addEventListener('input', updateGrowthPrediction);
+
+/* --- Animated growth playback: instead of only charting the projection,
+   detected colonies actually bloom/multiply directly on the plate photo,
+   scrubbed against the simulated hour timeline. --- */
+
+// Small deterministic PRNG so daughter-colony placement is stable across
+// re-renders of the same plate/parameter combination rather than jittering
+// every time the animation restarts.
+function seededRandom(seed) {
+  let s = seed % 2147483647;
+  if (s <= 0) s += 2147483646;
+  return function() { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+}
+
+// Places up to (K - N0) synthetic "daughter colony" slots across the visible
+// plate area, respecting existing colony positions and a minimum spacing, so
+// the playback has real estate to bloom new colonies into as the modeled
+// population grows beyond what's currently detected.
+function precomputeSyntheticColonySlots() {
+  if (!baselineImageBuffer) { syntheticColonySlots = []; return; }
+  const w = baselineImageBuffer.width, h = baselineImageBuffer.height;
+  const colonyBlobs = catalogedBlobs.filter((b, i) =>
+    !algorithmicallyPurgedIndices.has(i) && b.artifactType !== 'contaminant' && b.artifactType !== 'bubble'
+  );
+  const N0 = colonyBlobs.length;
+  const K = estimateCarryingCapacity(catalogedBlobs, w, h);
+  const avgRadius = N0 ? medianValue(colonyBlobs.map(b => Math.max((b.maxX - b.minX), (b.maxY - b.minY)) / 2)) : 6;
+  // Use the actual detected dish boundary (not just the image frame) so
+  // synthetic daughter colonies bloom inside the real plate, not scattered
+  // across background outside it when the photo isn't perfectly cropped/centered.
+  const geom = (detectedPlateGeometry && detectedPlateGeometry.confidence >= 0.3)
+    ? detectedPlateGeometry
+    : { cx: w / 2, cy: h / 2, r: Math.min(w, h) / 2 - 4 };
+  const centerX = geom.cx, centerY = geom.cy;
+  const plateRadius = Math.max(4, geom.r - avgRadius - 2); // inset so blooms don't clip the rim
+
+  const rng = seededRandom(Math.round(centerX * 97 + centerY * 131 + N0 * 17 + 1));
+  const existingPositions = colonyBlobs.map(b => ({ x: b.cx, y: b.cy }));
+  const slots = [];
+  const maxSlots = Math.max(0, Math.round(K) - N0);
+  const minSpacing = Math.max(4, avgRadius * 1.1);
+
+  let attempts = 0;
+  while (slots.length < maxSlots && attempts < maxSlots * 40) {
+    attempts++;
+    const ang = rng() * Math.PI * 2;
+    const rad = Math.sqrt(rng()) * plateRadius;
+    const x = centerX + Math.cos(ang) * rad;
+    const y = centerY + Math.sin(ang) * rad;
+    const tooClose = existingPositions.some(p => Math.hypot(p.x - x, p.y - y) < minSpacing) ||
+                      slots.some(p => Math.hypot(p.x - x, p.y - y) < minSpacing);
+    if (tooClose) continue;
+    const birthFraction = slots.length / Math.max(1, maxSlots - 1);
+    slots.push({ x, y, r: avgRadius * (0.8 + rng() * 0.4), birthFraction });
+    existingPositions.push({ x, y });
+  }
+  syntheticColonySlots = slots;
+}
+
+// Renders the plate at simulated hour `t`: existing colonies enlarge modestly
+// over time, and daughter colonies bloom in (fading/growing from nothing) as
+// the aggregate modeled population count rises past the current detected count.
+function renderGrowthPlaybackFrame(t) {
+  if (!baselineImageBuffer) return;
+  const model = growthModelSelect.value;
+  const doublingMinutes = parseFloat(doublingTimeSlider.value);
+  const durationHours = parseFloat(durationSlider.value);
+  const lagHours = parseFloat(lagSlider.value);
+
+  const w = baselineImageBuffer.width, h = baselineImageBuffer.height;
+  const colonyBlobs = catalogedBlobs.filter((b, i) =>
+    !algorithmicallyPurgedIndices.has(i) && b.artifactType !== 'contaminant' && b.artifactType !== 'bubble'
+  );
+  const N0 = Math.max(1, colonyBlobs.length);
+  const K = estimateCarryingCapacity(catalogedBlobs, w, h);
+  const rate = Math.log(2) / (doublingMinutes / 60);
+  const Nt = Math.min(K, growthModelValue(model, N0, K, rate, lagHours, t));
+
+  // Existing colonies also enlarge somewhat over the simulated window, not just multiply.
+  const perColonyGrowth = 1 + 0.5 * Math.min(1, t / Math.max(1, durationHours));
+
+  ctx.drawImage(baseImageCanvas, 0, 0);
+  ctx.lineWidth = 2;
+
+  colonyBlobs.forEach(b => {
+    const baseR = Math.max((b.maxX - b.minX), (b.maxY - b.minY)) / 2 + 2;
+    const rr = baseR * perColonyGrowth;
+    const swatch = artifactStrokeColor(b);
+    ctx.globalAlpha = 0.95;
+    ctx.strokeStyle = swatch;
+    ctx.beginPath(); ctx.arc(b.cx, b.cy, rr, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 0.10;
+    ctx.fillStyle = swatch;
+    ctx.beginPath(); ctx.arc(b.cx, b.cy, rr, 0, Math.PI * 2); ctx.fill();
+  });
+
+  const slots = syntheticColonySlots || [];
+  const activeSlotCount = Math.round(Math.max(0, Nt - N0));
+  const bloomColor = varCSS('--neon-green');
+  for (let i = 0; i < Math.min(activeSlotCount, slots.length); i++) {
+    const s = slots[i];
+    const birthT = s.birthFraction * durationHours * 0.9;
+    const age = Math.max(0, t - birthT);
+    const growProgress = Math.min(1, age / 1.5); // ~1.5h to bloom to full size
+    if (growProgress <= 0) continue;
+    const rr = s.r * growProgress;
+    ctx.globalAlpha = 0.9 * growProgress;
+    ctx.strokeStyle = bloomColor;
+    ctx.beginPath(); ctx.arc(s.x, s.y, rr, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 0.14 * growProgress;
+    ctx.fillStyle = bloomColor;
+    ctx.beginPath(); ctx.arc(s.x, s.y, rr, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  playbackScrubber.value = t.toFixed(2);
+  playbackHourLabel.textContent = 'T+' + t.toFixed(1) + 'h';
+  playbackCountLabel.textContent = Math.round(Nt).toLocaleString() + ' CFU on plate';
+}
+
+function stopPlayback() {
+  playbackActive = false;
+  if (playbackAnimHandle) cancelAnimationFrame(playbackAnimHandle);
+  playbackAnimHandle = null;
+  playbackBtn.textContent = '▶';
+}
+
+function startPlayback() {
+  if (!baselineImageBuffer) return;
+  playbackActive = true;
+  playbackBtn.textContent = '❚❚';
+  const durationHours = parseFloat(durationSlider.value);
+  playbackScrubber.max = durationHours;
+  playbackWallStart = performance.now();
+  playbackStartHour = parseFloat(playbackScrubber.value) || 0;
+  if (playbackStartHour >= durationHours) playbackStartHour = 0;
+
+  function step(now) {
+    if (!playbackActive) return;
+    const elapsedSec = (now - playbackWallStart) / 1000;
+    const hourSpan = durationHours - playbackStartHour;
+    const t = playbackStartHour + Math.min(hourSpan, (elapsedSec / PLAYBACK_REALTIME_SECONDS) * durationHours);
+    renderGrowthPlaybackFrame(t);
+    if (t >= durationHours) { stopPlayback(); return; }
+    playbackAnimHandle = requestAnimationFrame(step);
+  }
+  playbackAnimHandle = requestAnimationFrame(step);
+}
+
+playbackBtn.addEventListener('click', () => {
+  if (!baselineImageBuffer) return;
+  if (playbackActive) stopPlayback();
+  else startPlayback();
+});
+
+playbackScrubber.addEventListener('input', () => {
+  stopPlayback();
+  renderGrowthPlaybackFrame(parseFloat(playbackScrubber.value));
+});
+
+/* ======================================================================
+   TIME-SERIES GROWTH KINETICS — MEASURED FIT
+   Unlike the simulation card above (which extrapolates a curve from a
+   single detected count using user-chosen parameters), this module takes
+   several real photos of the SAME plate at different incubation times,
+   runs each one through the actual detection pipeline to get a measured
+   colony count, and then fits growth-model parameters (rate, carrying
+   capacity, lag) to those measurements via nonlinear least squares.
+   ====================================================================== */
+
+const tsHourInput   = document.getElementById('tsHourInput');
+const tsAddBtn       = document.getElementById('tsAddBtn');
+const tsFileInput    = document.getElementById('tsFileInput');
+const tsPointList    = document.getElementById('tsPointList');
+const tsEmpty        = document.getElementById('tsEmpty');
+const fitModelSelect = document.getElementById('fitModelSelect');
+const tsFitBtn       = document.getElementById('tsFitBtn');
+const tsChartWrap    = document.getElementById('tsChartWrap');
+const tsStatsRow     = document.getElementById('tsStatsRow');
+const tsFitRate      = document.getElementById('tsFitRate');
+const tsFitK         = document.getElementById('tsFitK');
+const tsFitR2        = document.getElementById('tsFitR2');
+const tsApplyBtn     = document.getElementById('tsApplyBtn');
+
+let timeSeriesPoints = []; // [{ id, tHours, count }]
+let tsPointCounter = 0;
+let tsFitChartInstance = null;
+let lastFitResult = null; // { model, N0, r, K, lag, r2 }
+
+/* Standalone version of the detection pipeline used by executeComputerVisionPass,
+   but pure: it doesn't touch sliders, catalogedBlobs, or any other global UI
+   state, so it can be run silently against arbitrary time-series photos
+   without disturbing whatever plate is currently loaded in the main workspace. */
+function countColoniesStandalone(imageData) {
+  const w = imageData.width, h = imageData.height;
+  const data = imageData.data;
+  const correctedGray = computeIlluminationCorrectedGray(data, w, h);
+
+  const geometry = detectPlateBoundary(correctedGray, w, h);
+  const plateMask = buildPlateMask((geometry && geometry.confidence >= 0.3) ? geometry : null, w, h);
+
+  const otsu = evaluateOtsuSegmentation(correctedGray, w, h, plateMask);
+  let below = 0, counted = 0;
+  for (let i = 0; i < correctedGray.length; i++) {
+    if (plateMask && plateMask[i] !== 1) continue;
+    counted++;
+    if (correctedGray[i] < otsu) below++;
+  }
+  if (counted === 0) { counted = correctedGray.length; below = 0; }
+  const darker = below <= (counted - below);
+
+  const rawBlobs = analyzeConnectedComponents(data, w, h, otsu, darker, correctedGray, plateMask)
+    .filter(b => b.area >= 3);
+  let minArea = 15, maxArea = 4000;
+  if (rawBlobs.length >= 3) {
+    const med = medianValue(rawBlobs.map(b => b.area));
+    minArea = Math.round(Math.min(200, Math.max(3, med * 0.18)));
+    maxArea = Math.round(Math.min(20000, Math.max(minArea * 4, med * 7)));
+  }
+
+  let blobs = analyzeConnectedComponents(data, w, h, otsu, darker, correctedGray, plateMask)
+    .filter(b => b.area >= minArea && b.area <= maxArea);
+
+  blobs = blobs.filter(b => b.minX > 0 && b.minY > 0 && b.maxX < w - 1 && b.maxY < h - 1);
+  if (geometry && geometry.confidence >= 0.3) {
+    const rimMargin = Math.max(3, geometry.r * 0.035);
+    blobs = blobs.filter(b => Math.hypot(b.cx - geometry.cx, b.cy - geometry.cy) <= geometry.r - rimMargin);
+  }
+
+  const IDEAL_EXTENT = 0.785;
+  blobs.forEach(b => {
+    const boxArea = Math.max(1, (b.maxX - b.minX + 1) * (b.maxY - b.minY + 1));
+    b.extent = b.area / boxArea;
+  });
+  blobs = blobs.filter(b => b.extent > 0.35);
+
+  return { count: blobs.length, geometry };
+}
+
+function loadImageAsData(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const asset = new Image();
+      asset.onload = () => {
+        let width = asset.width, height = asset.height;
+        if (width > FRAME_RENDER_LIMIT || height > FRAME_RENDER_LIMIT) {
+          const factor = FRAME_RENDER_LIMIT / Math.max(width, height);
+          width = Math.round(width * factor); height = Math.round(height * factor);
+        }
+        const c = document.createElement('canvas');
+        c.width = width; c.height = height;
+        const cctx = c.getContext('2d', { willReadFrequently: true });
+        cctx.drawImage(asset, 0, 0, width, height);
+        resolve(cctx.getImageData(0, 0, width, height));
+      };
+      asset.onerror = reject;
+      asset.src = ev.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+tsAddBtn.addEventListener('click', () => tsFileInput.click());
+
+tsFileInput.addEventListener('change', async e => {
+  if (!e.target.files.length) return;
+  const file = e.target.files[0];
+  const tHours = parseFloat(tsHourInput.value);
+  if (isNaN(tHours) || tHours < 0) { tsFileInput.value = ''; return; }
+
+  tsAddBtn.disabled = true;
+  tsAddBtn.textContent = 'Analyzing plate…';
+  try {
+    const imageData = await loadImageAsData(file);
+    const result = countColoniesStandalone(imageData);
+    timeSeriesPoints.push({ id: ++tsPointCounter, tHours, count: result.count });
+    timeSeriesPoints.sort((a, b) => a.tHours - b.tHours);
+    renderTsPointList();
+  } catch (err) {
+    console.error('Time-series plate analysis failed:', err);
+  }
+  tsAddBtn.disabled = false;
+  tsAddBtn.textContent = '+ Add Timepoint Photo';
+  tsFileInput.value = '';
+});
+
+function renderTsPointList() {
+  tsPointList.innerHTML = '';
+  tsEmpty.style.display = timeSeriesPoints.length ? 'none' : 'block';
+  timeSeriesPoints.forEach(p => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; background:rgba(0,0,0,0.3); border:1px solid var(--line); border-radius:6px; padding:8px 12px; font-family:var(--mono); font-size:12px;';
+    row.innerHTML = `<span>T+${p.tHours.toFixed(2)}h — <b style="color:var(--neon-cyan);">${p.count}</b> colonies detected</span>`;
+    const rm = document.createElement('button');
+    rm.textContent = '✕';
+    rm.className = 'btn';
+    rm.style.cssText = 'padding:2px 10px; font-size:11px;';
+    rm.addEventListener('click', () => {
+      timeSeriesPoints = timeSeriesPoints.filter(x => x.id !== p.id);
+      renderTsPointList();
+    });
+    row.appendChild(rm);
+    tsPointList.appendChild(row);
+  });
+  tsFitBtn.disabled = timeSeriesPoints.length < 2;
+  if (timeSeriesPoints.length < 2) {
+    tsChartWrap.style.display = 'none';
+    tsStatsRow.style.display = 'none';
+    tsApplyBtn.style.display = 'none';
+  }
+}
+
+/* Nelder-Mead simplex fit of (rate, carrying capacity, lag) against measured
+   (t, count) pairs, with N0 pinned to the earliest observed timepoint. A
+   derivative-free simplex was chosen over gradient methods because the
+   models (logistic/Gompertz/exponential) are non-convex in these params and
+   real datasets here are tiny (as few as 2-3 points) and noisy, where a
+   robust-but-simple optimizer matters more than convergence speed. Multiple
+   restarts guard against the simplex settling into a poor local minimum. */
+function fitGrowthCurveToMeasurements(model, points) {
+  const sorted = points.slice().sort((a, b) => a.t - b.t);
+  const N0 = Math.max(0.5, sorted[0].n);
+  const maxN = Math.max(...sorted.map(p => p.n));
+  const tSpan = Math.max(0.5, sorted[sorted.length - 1].t - sorted[0].t);
+
+  function sse(params) {
+    const [r, K, lag] = params;
+    if (!(r > 0) || !(K >= maxN) || !(lag >= 0)) return Infinity;
+    let sum = 0;
+    for (const p of sorted) {
+      const pred = growthModelValue(model, N0, K, r, lag, p.t - sorted[0].t);
+      const d = pred - p.n;
+      sum += d * d;
+    }
+    return sum;
+  }
+
+  function runSimplex(initParams) {
+    let simplex = [initParams];
+    for (let i = 0; i < 3; i++) {
+      const p = initParams.slice();
+      p[i] = p[i] * 1.3 + 0.05;
+      simplex.push(p);
+    }
+    simplex = simplex.map(p => ({ params: p, sse: sse(p) }));
+
+    for (let iter = 0; iter < 300; iter++) {
+      simplex.sort((a, b) => a.sse - b.sse);
+      const worst = simplex[simplex.length - 1];
+      const centroid = [0, 0, 0];
+      for (let i = 0; i < simplex.length - 1; i++) {
+        for (let d = 0; d < 3; d++) centroid[d] += simplex[i].params[d] / (simplex.length - 1);
+      }
+      const reflected = centroid.map((c, d) => c + 1.0 * (c - worst.params[d]));
+      const reflectedSSE = sse(reflected);
+      if (reflectedSSE < simplex[0].sse) {
+        const expanded = centroid.map((c, d) => c + 2.0 * (c - worst.params[d]));
+        const expandedSSE = sse(expanded);
+        simplex[simplex.length - 1] = (expandedSSE < reflectedSSE)
+          ? { params: expanded, sse: expandedSSE }
+          : { params: reflected, sse: reflectedSSE };
+      } else if (reflectedSSE < simplex[simplex.length - 2].sse) {
+        simplex[simplex.length - 1] = { params: reflected, sse: reflectedSSE };
+      } else {
+        const contracted = centroid.map((c, d) => c + 0.5 * (worst.params[d] - c));
+        const contractedSSE = sse(contracted);
+        if (contractedSSE < worst.sse) {
+          simplex[simplex.length - 1] = { params: contracted, sse: contractedSSE };
+        } else {
+          const bestP = simplex[0].params;
+          simplex = simplex.map(s => {
+            const np = s.params.map((v, d) => bestP[d] + 0.5 * (v - bestP[d]));
+            return { params: np, sse: sse(np) };
+          });
+        }
+      }
+    }
+    simplex.sort((a, b) => a.sse - b.sse);
+    return simplex[0];
+  }
+
+  // Multiple restarts across a spread of initial doubling-time guesses.
+  const restarts = [15, 30, 60, 120, 240].map(dblMin => {
+    const r0 = Math.log(2) / (dblMin / 60);
+    const K0 = Math.max(maxN * 1.4, N0 * 3);
+    return runSimplex([r0, K0, 0]);
+  });
+  restarts.sort((a, b) => a.sse - b.sse);
+  const [r, K, lag] = restarts[0].params;
+
+  const meanN = sorted.reduce((s, p) => s + p.n, 0) / sorted.length;
+  let ssTot = 0, ssRes = 0;
+  sorted.forEach(p => {
+    const pred = growthModelValue(model, N0, K, r, Math.max(0, lag), p.t - sorted[0].t);
+    ssRes += (p.n - pred) ** 2;
+    ssTot += (p.n - meanN) ** 2;
+  });
+  const r2 = ssTot > 1e-9 ? Math.max(0, 1 - ssRes / ssTot) : (ssRes < 1e-6 ? 1 : 0);
+
+  return { N0, r, K, lag: Math.max(0, lag), r2, t0: sorted[0].t };
+}
+
+tsFitBtn.addEventListener('click', () => {
+  if (timeSeriesPoints.length < 2) return;
+  const model = fitModelSelect.value;
+  const points = timeSeriesPoints.map(p => ({ t: p.tHours, n: p.count }));
+  const fit = fitGrowthCurveToMeasurements(model, points);
+  lastFitResult = Object.assign({ model }, fit);
+
+  const doublingMinutes = (Math.log(2) / fit.r) * 60;
+  tsFitRate.textContent = doublingMinutes.toFixed(0) + ' min';
+  tsFitK.textContent = Math.round(fit.K).toLocaleString();
+  tsFitR2.textContent = fit.r2.toFixed(3);
+  tsStatsRow.style.display = 'flex';
+  tsApplyBtn.style.display = 'block';
+
+  const sortedPts = timeSeriesPoints.slice().sort((a, b) => a.tHours - b.tHours);
+  const tMax = sortedPts[sortedPts.length - 1].tHours;
+  const curveSteps = 40;
+  const curveLabels = [];
+  const curveVals = [];
+  for (let s = 0; s <= curveSteps; s++) {
+    const t = (tMax - fit.t0) * (s / curveSteps);
+    curveLabels.push((fit.t0 + t).toFixed(2));
+    curveVals.push(growthModelValue(model, fit.N0, fit.K, fit.r, fit.lag, t));
+  }
+  const measuredSeries = curveLabels.map(lbl => {
+    const match = sortedPts.find(p => Math.abs(p.tHours - parseFloat(lbl)) < 1e-6);
+    return match ? match.count : null;
+  });
+
+  tsChartWrap.style.display = 'block';
+  const chartCtx = document.getElementById('tsFitChart').getContext('2d');
+  if (tsFitChartInstance) tsFitChartInstance.destroy();
+  tsFitChartInstance = new Chart(chartCtx, {
+    type: 'line',
+    data: {
+      labels: curveLabels,
+      datasets: [
+        {
+          label: 'Fitted curve', data: curveVals,
+          borderColor: varCSS('--neon-green'), backgroundColor: 'rgba(0,255,102,0.08)',
+          fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2
+        },
+        {
+          label: 'Measured counts', data: measuredSeries,
+          borderColor: varCSS('--neon-pink'), backgroundColor: varCSS('--neon-pink'),
+          showLine: false, pointRadius: 5, pointHoverRadius: 6
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: true, labels: { color: varCSS('--text-dim'), font: { family: varCSS('--mono'), size: 9 }, boxWidth: 10 } } },
+      scales: {
+        x: { title: { display: true, text: 'Hours', color: varCSS('--text-dim'), font: { family: varCSS('--mono'), size: 10 } }, grid: { color: 'rgba(27, 50, 53, 0.4)' }, ticks: { color: varCSS('--text-dim'), maxTicksLimit: 8 } },
+        y: { title: { display: true, text: 'CFU Count', color: varCSS('--text-dim'), font: { family: varCSS('--mono'), size: 10 } }, grid: { color: 'rgba(27, 50, 53, 0.4)' }, ticks: { color: varCSS('--text-dim') }, min: 0 }
+      }
+    }
+  });
+});
+
+tsApplyBtn.addEventListener('click', () => {
+  if (!lastFitResult || !baselineImageBuffer) return;
+  const doublingMinutes = Math.max(15, Math.min(180, Math.round((Math.log(2) / lastFitResult.r) * 60)));
+  growthModelSelect.value = lastFitResult.model;
+  doublingTimeSlider.value = doublingMinutes;
+  lagSlider.value = Math.min(6, Math.max(0, Math.round(lastFitResult.lag * 2) / 2));
+  doublingTimeVal.textContent = doublingTimeSlider.value + ' min';
+  lagVal.textContent = parseFloat(lagSlider.value).toFixed(1) + ' h';
+  updateGrowthPrediction();
+});
+</script>
+</body>
+</html>
